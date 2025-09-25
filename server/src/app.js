@@ -2,6 +2,7 @@ import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
 import { ApiError } from "./utils/ApiError.js"; // adjust path if needed
+import { PharmacyRouter } from "./routes/pharmacy.route.js"
 
 const app = express()
 
@@ -17,7 +18,7 @@ app.use(cookieParser())
 
 
 //routes import
-
+app.use("/api/pharmacy/", PharmacyRouter)
 //routes declaration
 
 
