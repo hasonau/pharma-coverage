@@ -44,11 +44,11 @@ const RegisterPharmacy = async (req, res, next) => {
     if (!newPharmacyToBeRegistered.password) throw new ApiError(400, "password not provided")
     if (!newPharmacyToBeRegistered.name) throw new ApiError(400, "Name not provided")
     if (!newPharmacyToBeRegistered.licenseNumber) throw new ApiError(400, "LicenseNumber not provided")
-    // if (!newPharmacyToBeRegistered.isVerified) throw new ApiError(404, "isverified not given")
-    if (!newPharmacyToBeRegistered.contactNumber) throw new ApiError(404, "isverified not given")
-    // if (!newPharmacyToBeRegistered.role) throw new ApiError(404, "isverified not given")
-
-
+    if (!newPharmacyToBeRegistered.contactNumber) throw new ApiError(404, "Contact number not given")
+    if (!newPharmacyToBeRegistered.address) throw new ApiError(400, "Address not provided")
+    if (!newPharmacyToBeRegistered.city) throw new ApiError(400, "City not provided")
+    if (!newPharmacyToBeRegistered.country) throw new ApiError(400, "Country not provided")
+    // if (!newPharmacyToBeRegistered.role) throw new ApiError(404, "role not given")
 
     const newPharmacy = await Pharmacy.create(
         {
@@ -57,6 +57,8 @@ const RegisterPharmacy = async (req, res, next) => {
             password: newPharmacyToBeRegistered.password,
             licenseNumber: newPharmacyToBeRegistered.licenseNumber,
             address: newPharmacyToBeRegistered.address,
+            city: newPharmacyToBeRegistered.city,
+            country: newPharmacyToBeRegistered.country,
             contactNumber: newPharmacyToBeRegistered.contactNumber,
             isVerified: newPharmacyToBeRegistered.isVerified,
             role: newPharmacyToBeRegistered.role

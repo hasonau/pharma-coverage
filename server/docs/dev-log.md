@@ -81,3 +81,41 @@
   - Register/Login → token set in cookies.
   - Hitting `/protected` with token → success.
   - Without token → error response.
+
+# DAY 3 – Core Models & Validation (Amendments)
+
+## Model Updates
+
+### Pharmacy Model
+
+- Added **location fields** for better shift filtering and future geo-based features:
+  - `addressLine` (String, required)
+  - `city` (String, required)
+  - `state` (String, optional)
+  - `country` (String, required)
+  - `postalCode` (String, optional)
+
+### Pharmacist Model
+
+- Added the same **location fields** as Pharmacy:
+  - `addressLine`, `city`, `state`, `country`, `postalCode`
+
+## Controller Updates
+
+### RegisterPharmacy
+
+- Now validates that `addressLine`, `city`, and `country` are provided during registration.
+- Ensures more complete data collection for location-based features.
+
+## Reasoning Behind Changes
+
+- These fields will allow **location-aware filtering** of shifts later (e.g., pharmacists see nearby pharmacies).
+- Provides better user experience by avoiding irrelevant shift listings.
+- Keeps the schema future-proof for geolocation enhancements (distance-based search, city filters).
+
+---
+
+✅ Amendments complete.  
+🚧 Next: Full **Shift Model** design + validation.
+
+# DAY 3's Actual work starts here,
