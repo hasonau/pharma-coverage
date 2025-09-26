@@ -32,26 +32,26 @@
 
 ## Models & Utilities
 
-- **User models** (`Pharmacy` / `Pharmacist`) with validation and required fields.
-- **Password hashing** implemented in models.
+- **User model (Pharmacy)** with validation and required fields.
+- **Password hashing** implemented in model (pre-save hook).
 - **JWT utilities**: `generateToken` and `verifyToken` for token creation and verification.
 - **Cookie helper**: sets JWT in httpOnly, secure cookies.
 
 ## Controllers & Routes
 
-- **Register APIs** for pharmacies:
+- **Register API (Pharmacy)**
   - Validates required fields.
   - Checks for duplicate emails.
   - Creates a new pharmacy user.
   - Generates JWT token and sets it in cookie.
-  - Returns structured response with minimal user info.
+  - Returns structured response with minimal user info (name, email).
 
-- **Login APIs** for pharmacies:
+- **Login API (Pharmacy)**
   - Validates email and password.
   - Generates JWT token and sets it in cookie.
   - Returns structured success response.
 
-- **Routes**:
+- **Routes**
   - `POST /api/pharmacy/Register` → Register pharmacy
   - `POST /api/pharmacy/Login` → Login pharmacy
 
@@ -60,4 +60,24 @@
 - Registration and login tested in Postman.
 - Cookie set successfully after registration and login.
 - Duplicate email registration returns proper error.
-- Login works only with correct JSON payload (`email` + `password`).
+- Login works only with correct JSON payload (`email`, `password`).
+
+## Auth Middleware
+
+- Extracts JWT token from cookies.
+- If no token → throws `401 Unauthorized`.
+- If invalid token → throws `401 Invalid Token`.
+- If valid → decodes token, attaches `req.user` (id + role) for downstream routes.
+
+## Protected Route Example
+
+- Added `/api/pharmacy/protected`.
+- Uses `authMiddleware`.
+- Returns `user` info from decoded token if access is granted.
+
+## Verification Done
+
+- Tested flow:
+  - Register/Login → token set in cookies.
+  - Hitting `/protected` with token → success.
+  - Without token → error response.
