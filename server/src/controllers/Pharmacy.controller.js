@@ -16,7 +16,7 @@ const Login = async (req, res, next) => {
     if (!UserFound) throw new ApiError(404, "Pharmacy not found with this email");
 
     // if userFound,we check if password by user is same as password in MONGODB
-    const isPasswordCorrect = UserFound.comparePassword(password)
+    const isPasswordCorrect = await UserFound.comparePassword(password)
     if (!isPasswordCorrect) throw new ApiError(401, "Wrong Password")
 
     // payload we use to generate token,are ID AND ROLE
@@ -29,6 +29,7 @@ const Login = async (req, res, next) => {
     res.json(new ApiResponse(200, "Login Succesfull"))
 
 }
+
 const RegisterPharmacy = async (req, res, next) => {
     // we get everything we require,we see what we require from model of pharmacy,right?
     // then we make new user using all that data,let's do that now

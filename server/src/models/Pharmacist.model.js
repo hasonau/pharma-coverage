@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
-
 const pharmacistSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -24,30 +23,30 @@ const pharmacistSchema = new mongoose.Schema({
         type: String,
         required: true,
         unique: true
-        // Used for verification logic with hashmap/array
     },
     isVerified: {
         type: Boolean,
-        required: true,
         default: false
     },
     specialization: {
         type: String,
-        required: false,
         trim: true
-        // Example: "Retail", "Hospital", "Clinical"
     },
     experience: {
         type: Number,
-        required: false,
         min: 0
-        // Number of years of practice
     },
     contactNumber: {
         type: String,
         required: true
-        // Phone number for pharmacies to contact
     },
+    // New location fields
+    addressLine: { type: String, required: true },
+    city: { type: String, required: true },
+    state: { type: String },
+    country: { type: String, required: true },
+    postalCode: { type: String },
+
     role: {
         type: String,
         required: true,
@@ -56,10 +55,7 @@ const pharmacistSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 pharmacistSchema.pre("save", async function (next) {
-
-    if (!this.isModified("password")) {
-        return next();
-    }
+    if (!this.isModified("password")) return next();
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
@@ -67,12 +63,11 @@ pharmacistSchema.pre("save", async function (next) {
     } catch (error) {
         next(error);
     }
-
 });
 
 pharmacistSchema.methods.comparePassword = async function (candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
-}
+};
 
 const Pharmacist = mongoose.model("Pharmacist", pharmacistSchema);
 export default Pharmacist;
