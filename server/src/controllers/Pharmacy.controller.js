@@ -8,8 +8,7 @@ import { setTokeninCookie } from "../utils/cookie.js"
 const Login = async (req, res, next) => {
 
     // EMAIL AND PASSWORD,taken out from req.body
-    const email = req.body.email;
-    const password = req.body.password;
+    const { email, password } = req.body;
 
     // Extracting Pharmacy of that email provided
     const UserFound = await Pharmacy.findOne({ email })
@@ -39,16 +38,6 @@ const RegisterPharmacy = async (req, res, next) => {
     const alreadyEmailExists = await Pharmacy.findOne({ email: newPharmacyToBeRegistered.email });
     if (alreadyEmailExists) throw new ApiError(404, "Email already exists")
 
-    // checking all required fields before trying to create new Pharmacy user
-    if (!newPharmacyToBeRegistered.email) throw new ApiError(400, "Email not provided")
-    if (!newPharmacyToBeRegistered.password) throw new ApiError(400, "password not provided")
-    if (!newPharmacyToBeRegistered.name) throw new ApiError(400, "Name not provided")
-    if (!newPharmacyToBeRegistered.licenseNumber) throw new ApiError(400, "LicenseNumber not provided")
-    if (!newPharmacyToBeRegistered.contactNumber) throw new ApiError(404, "Contact number not given")
-    if (!newPharmacyToBeRegistered.address) throw new ApiError(400, "Address not provided")
-    if (!newPharmacyToBeRegistered.city) throw new ApiError(400, "City not provided")
-    if (!newPharmacyToBeRegistered.country) throw new ApiError(400, "Country not provided")
-    // if (!newPharmacyToBeRegistered.role) throw new ApiError(404, "role not given")
 
     const newPharmacy = await Pharmacy.create(
         {
