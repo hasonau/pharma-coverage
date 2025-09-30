@@ -1,7 +1,11 @@
 import express from 'express';
 import { ApplyToShift } from "../controllers/Pharmacist.controller.js";
+import { requireRole } from "../middlewares/requireRole.middleware.js";
 
-const router = express.Router();
+const PharmacistRouter = express.Router();
 
 
-router.post("/apply:shiftId", requireRole("pharmacist"), ApplyToShift);
+PharmacistRouter.post("/apply/:shiftId", requireRole("pharmacist"), ApplyToShift);
+
+
+export { PharmacistRouter };

@@ -263,3 +263,39 @@
   "timestamp": "2025-09-28T09:57:15.410Z"
 }
 ```
+
+# DAY 5 – Application System & Conflict Algorithm
+
+## Morning (2 hrs)
+
+### Apply to Shift API
+
+- Implemented **ApplyToShift controller**:
+  - Extracts `pharmacistId` from `req.user.id` (token).
+  - Extracts `shiftId` from `req.params.shiftId`.
+  - Optional `notes` from request body.
+  - Validates:
+    - Shift exists.
+    - Shift is `open`.
+    - Pharmacist hasn’t already applied to this shift.
+  - Creates a new `Application` document with:
+    - `pharmacistId`
+    - `shiftId`
+    - `notes` (if provided)
+    - `status` defaults to `"applied"`.
+  - Updates the `Shift` document:
+    - Pushes the new `application._id` into the `applications` array.
+    - Saves updated shift.
+  - Returns structured `ApiResponse` with success message and application details.
+
+**Endpoint:**  
+`POST /api/pharmacist/apply/:shiftId`  
+**Auth:** Required (Pharmacist only)
+
+**Request Body Example:**
+
+```json
+{
+  "notes": "I am available and experienced with weekend shifts."
+}
+```

@@ -1,5 +1,5 @@
 import { authMiddleware } from "../middlewares/Auth.middleware.js"
-import { ApiError } from "../utils/ApiError";
+import { ApiError } from "../utils/ApiError.js";
 import Shift from "../models/Shift.model.js"
 import Application from "../models/Application.model.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
