@@ -82,7 +82,7 @@
   - Hitting `/protected` with token → success.
   - Without token → error response.
 
-# DAY 3 – Core Models & Validation (Amendments)
+# DAY 3 – (Amendments to previous work)
 
 ## Model Updates
 
@@ -118,4 +118,148 @@
 ✅ Amendments complete.  
 🚧 Next: Full **Shift Model** design + validation.
 
-# DAY 3's Actual work starts here,
+# DAY 3 – Core Models & Validation
+
+## Morning (2 hrs)
+
+### Shift Model
+
+- Finalized and documented **MongoDB schema design** for core entities.
+- Implemented the **Shift model** with fields:
+  - `pharmacyId`
+  - `date`
+  - `startTime`
+  - `endTime`
+  - `hourlyRate`
+  - `status`
+  - `requirements`
+  - `description`
+  - `urgency`
+  - `shiftType`
+  - `maxApplicants`
+  - `applications`
+  - `confirmedPharmacistId`
+  - `notes`
+- Added **compound index** on `(date + startTime + endTime)` to support **conflict detection logic**.
+
+---
+
+## Afternoon (1.5 hrs)
+
+### Application Model
+
+- Implemented the **Application model** with references to:
+  - `shiftId`
+  - `pharmacistId`
+- Added **status tracking**:
+  - `applied`
+  - `accepted`
+  - `rejected`
+
+### Validation Layer (Joi)
+
+- **CreateShiftSchema**:
+  - Required fields: `date`, `startTime`, `endTime`, `hourlyRate`
+  - Optional fields with defaults: `requirements`, `description`, `urgency`, `shiftType`, `maxApplicants`
+- **UpdateShiftSchema**:
+  - All fields optional
+  - Consistent validation rules with creation schema
+
+---
+
+## Backend Responsibilities vs. User Input
+
+- `pharmacyId` comes from **logged-in user** (`req.user.id`), not request body.
+- `status` defaults to **"open"** on creation.
+- `applications` array and `confirmedPharmacistId` are **backend-managed**:
+  - Only modified when pharmacists apply or are confirmed.
+
+---
+
+## Application Workflow Clarified
+
+- Each **pharmacist application** creates a new **Application document**.
+- That document’s **ID is pushed** into the parent shift’s `applications` array.
+
+# DAY 4 – Shift Management APIs
+
+## Morning (2 hrs)
+
+### Create Shift API
+
+- Implemented **CreateShift controller**:
+  - Accepts validated input from request body.
+  - Attaches `pharmacyId` from `req.user.id`.
+  - Persists shift to DB with defaults (`status: open`, `urgency: normal`, `shiftType: regular`).
+  - Returns structured `ApiResponse` including created shift.
+
+- Added **role-based access control**:
+  - `requireRole("pharmacy")` middleware restricts access to pharmacies.
+  - `authMiddleware` validates JWT from cookies before role check.
+
+- Defined route in `ShiftRouter`:
+  - `POST /api/shifts/create`
+
+- Middleware execution order:
+  1. `authMiddleware` → ensure request has valid JWT.
+  2. `requireRole("pharmacy")` → ensure only pharmacies can create shifts.
+  3. `validate(CreateShiftSchema)` → validate request body.
+  4. `CreateShift` controller → create shift in database.
+
+  ### Lightweight Security
+
+- Added **Helmet** middleware:
+  - Automatically sets secure HTTP headers (`X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, etc.).
+- Added **express-rate-limit** middleware:
+  - Restricts each IP to **100 requests per 15 minutes**.
+  - Prevents brute force attacks and abuse.
+  - Returns `429 Too Many Requests` when exceeded.
+
+### API Documentation
+
+**Endpoint:** `POST /api/shifts/create`  
+**Auth:** Required (Pharmacy only)
+
+**Request Body:**
+
+```json
+{
+  "date": "2025-10-01",
+  "startTime": "2025-10-01T09:00:00Z",
+  "endTime": "2025-10-01T17:00:00Z",
+  "hourlyRate": 40,
+  "requirements": "Must be licensed",
+  "description": "Day shift with high patient load",
+  "urgency": "normal",
+  "shiftType": "regular",
+  "maxApplicants": 3
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "statusCode": 201,
+  "data": {
+    "_id": "68d9067b8041234bb94cb49d",
+    "pharmacyId": "68d5103167aa006b8768ee27",
+    "date": "2025-10-01T00:00:00.000Z",
+    "startTime": "2025-10-01T09:00:00.000Z",
+    "endTime": "2025-10-01T17:00:00.000Z",
+    "hourlyRate": 40,
+    "status": "open",
+    "urgency": "normal",
+    "shiftType": "regular",
+    "maxApplicants": 3,
+    "applications": [],
+    "confirmedPharmacistId": null,
+    "createdAt": "2025-09-28T09:57:15.277Z",
+    "updatedAt": "2025-09-28T09:57:15.277Z",
+    "__v": 0
+  },
+  "message": "New Shift Created Successfully,in DB",
+  "success": true,
+  "timestamp": "2025-09-28T09:57:15.410Z"
+}
+```
