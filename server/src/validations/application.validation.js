@@ -4,7 +4,6 @@ import Joi from "joi";
 const objectId = Joi.string().regex(/^[0-9a-fA-F]{24}$/).message("Invalid ObjectId");
 
 const ApplyShiftSchema = Joi.object({
-    shiftId: objectId.required(),
     notes: Joi.string().max(200).optional()
 });
 
