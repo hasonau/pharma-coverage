@@ -67,6 +67,8 @@ const shiftSchema = new mongoose.Schema({
 // Compound index for conflict detection (date + times)
 // Made for future logic of preventing overlapping shifts
 shiftSchema.index({ date: 1, startTime: 1, endTime: 1 });
+shiftSchema.index({ pharmacyId: 1 });
+
 
 const Shift = mongoose.model("Shift", shiftSchema);
 export default Shift;

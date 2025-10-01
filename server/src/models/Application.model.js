@@ -24,5 +24,7 @@ const applicationSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+applicationSchema.index({ shiftId: 1, pharmacistId: 1 }, { unique: true });
+
 const Application = mongoose.model("Application", applicationSchema);
 export default Application;

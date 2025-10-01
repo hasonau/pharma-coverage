@@ -264,173 +264,105 @@
 }
 ```
 
-# DAY 5 – Application System & Conflict Algorithm
+# Day 5 – Application System & Conflict Algorithm
 
 ## Morning (2 hrs)
 
 ### Apply to Shift API
 
-- Implemented **ApplyToShift controller**:
-  - Extracts `pharmacistId` from `req.user.id` (token).
-  - Extracts `shiftId` from `req.params.shiftId`.
-  - Optional `notes` from request body.
-  - Validates:
-    - Shift exists.
-    - Shift is `open`.
-    - Pharmacist hasn’t already applied to this shift.
-  - Creates a new `Application` document with:
-    - `pharmacistId`
-    - `shiftId`
-    - `notes` (if provided)
-    - `status` defaults to `"applied"`.
-  - Updates the `Shift` document:
-    - Pushes the new `application._id` into the `applications` array.
-    - Saves updated shift.
-  - Returns structured `ApiResponse` with success message and application details.
+- Pharmacist applies to a shift.
+- Validations:
+  - Shift exists and is `open`.
+  - Pharmacist hasn’t already applied.
+- Creates new `Application` document.
+- Pushes application ID into `Shift.applications`.
+- Returns structured `ApiResponse`.
 
-**Endpoint:**  
-`POST /api/pharmacist/apply/:shiftId`  
+**Endpoint:** `POST /api/pharmacist/apply/:shiftId`  
 **Auth:** Required (Pharmacist only)
 
-**Request Body Example:**
+---
 
-```json
-{
-  "notes": "I am available and experienced with weekend shifts."
-}
-```
+### Conflict Detection for Shifts
 
-## Conflict Detection for Shifts
-
-We added logic to prevent pharmacies from creating **overlapping shifts** on the same day.
-
-### Validations Performed
-
-- All provided fields (`date`, `startTime`, `endTime`) must be valid dates.
-- `startTime < endTime`.
-- If `date` is **today**:
-  - `startTime` must be later than the current system time.
-  - (Optional small margin allowed, e.g. 2–3 minutes).
-- `date`, `startTime`, and `endTime` must all belong to the **same calendar day**.
-- Before saving a shift, check if another shift for the **same pharmacy** overlaps with the requested time.
-
-### Overlap Rule
-
-A new shift **overlaps** if:
-
-- Its `startTime` is before an existing shift’s `endTime`, **AND**
-- Its `endTime` is after an existing shift’s `startTime`.
-
-#### Example
-
-- Existing shift: `09:00 – 12:00`
-- New attempt:
-  - `11:30 – 14:00` → ❌ Overlaps (11:30–12:00) → rejected
-  - `12:00 – 15:00` → ✅ No overlap → allowed
+- Prevent pharmacies from creating overlapping shifts.
+- Validations:
+  - Valid dates.
+  - `startTime < endTime`.
+  - Same calendar day.
+  - No past shifts.
+- Overlap rule:  
+  New shift overlaps if `newStart < existingEnd` AND `newEnd > existingStart`.
 
 ---
 
-### Query for Overlap Detection
+## Afternoon (1.5 hrs)
 
-We implemented an overlap check during shift creation:
+### ShowApplicants API
 
-```js
-const overlapShift = await Shift.findOne({
-  pharmacyId,
-  date: shiftDate,
-  $or: [
-    {
-      startTime: { $lt: end },
-      endTime: { $gt: start },
-    },
-  ],
-});
-```
+**Endpoint:** `GET /shifts/:shiftId/applicants`  
+**Auth:** Required (Pharmacy only)
 
-## ShowApplicants API – List Applications
-
-**Endpoint:**  
-`GET /shifts/:shiftId/applicants`
-
-**Purpose:**  
-Allow a pharmacy to view all applicants for a specific shift they posted.
-
-**Workflow:**
-
-1. **Frontend:**
-   - Pharmacy clicks "View Applicants" button on their posted shifts.
-   - Sends `shiftId` in URL to backend.
-
-2. **Backend:**
-   - Extract `shiftId` from `req.params` and pharmacy ID from `req.user.id`.
-   - Query the Shift collection:
-
-```javascript
-const shiftWithApplicants = await Shift.findById(shiftId).populate({
-  path: "applications",
-  populate: { path: "pharmacistId", select: "name email" },
-});
-```
-
-### ShowApplicants API – Summary
-
-- **Purpose:** Allows a pharmacy to view all applicants for a specific shift they posted.
-
-- **Workflow:**
-  - Fetch the shift document using its ID.
-  - Populate each applicant’s pharmacist information (name and email).
-  - Perform an authorization check to ensure the requesting pharmacy owns the shift.
-  - If unauthorized, return a `403` error.
-  - If the shift does not exist or is not owned by the pharmacy, return a `404` error.
-
-- **Response Example:**
-  - Includes shift details (`_id`, `date`, `startTime`, `endTime`) and an array of applications.
-  - Each application contains the pharmacist's name, email, and application status.
-
-- **Notes:**
-  - Frontend should only show "View Applicants" for shifts posted by the logged-in pharmacy.
-  - Backend authorization ensures security and prevents unauthorized access.
-  - Optimization: fetch and authorization can be combined in a single query to reduce operations.
-
-## (Forgot making in previous days) Pharmacist Authentication (Register & Login)
-
-### Register Pharmacist
-
-**Endpoint:**  
-`POST /pharmacist/register`
-
-**Description:**  
-Allows a new pharmacist to create an account. On successful registration, a JWT token is generated and set in an HTTP-only cookie, so the pharmacist is logged in immediately.
-
-**Flow:**
-
-- Validates request body with Joi schema.
-- Checks if email already exists.
-- Checks if license number already exists.
-- Creates new pharmacist (password is hashed automatically).
-- Issues JWT token `{ id, role: "pharmacist" }` and stores in cookies.
-- Returns pharmacist’s basic info (name + email).
-
-**Note:**  
-Response can be viewed in Postman upon hitting this endpoint.
+- Pharmacy fetches all applicants for their shift.
+- Populates pharmacist info (`name`, `email`).
+- Authorization ensures only the posting pharmacy can view.
 
 ---
 
-### Login Pharmacist
+### Pharmacist Authentication (Register & Login)
 
-**Endpoint:**  
-`POST /pharmacist/login`
+**Register Pharmacist** – `POST /pharmacist/register`
 
-**Description:**  
-Authenticates pharmacist with email and password. On success, a JWT token is generated and set in an HTTP-only cookie.
+- Validates body with Joi.
+- Checks unique email + licenseNumber.
+- Creates new pharmacist (hashes password).
+- Issues JWT token in cookie.
 
-**Flow:**
+**Login Pharmacist** – `POST /pharmacist/login`
 
-- Validates request body with Joi schema.
-- Looks up pharmacist by email.
-- Verifies password using bcrypt compare.
-- Issues JWT token `{ id, role: "pharmacist" }` and stores in cookies.
-- Returns pharmacist’s email.
+- Validates email + password.
+- Finds pharmacist, compares password.
+- Issues JWT token in cookie.
 
-**Note:**  
-Response can be viewed in Postman upon hitting this endpoint.
+---
+
+## Accept / Reject Applications
+
+**Accept Application** – `POST /pharmacy/applications/:applicationId/accept`
+
+- Verify pharmacy owns shift.
+- Mark one application as `accepted`.
+- Auto-reject all others.
+- Mark shift as `filled` and set `confirmedPharmacistId`.
+
+**Reject Application** – `POST /pharmacy/applications/:applicationId/reject`
+
+- Verify pharmacy owns shift.
+- If still `applied`, mark as `rejected`.
+- Shift stays `open`.
+- Useful for shortlisting.
+
+---
+
+### DB Indexing
+
+- **Application Schema**:  
+  `{ shiftId, pharmacistId }` unique → prevents duplicate applications.
+
+- **Shift Schema**:  
+  `{ date, startTime, endTime }` for overlap.  
+  `{ pharmacyId }` for filtering.
+
+- **Pharmacist Schema**:  
+  Unique `email` + `licenseNumber`.
+
+---
+
+✅ Day 5 complete:
+
+- Apply to shift
+- Conflict detection
+- Show applicants
+- Pharmacist register/login
+- Accept/Reject applications
+- DB indexing
