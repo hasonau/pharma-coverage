@@ -30,8 +30,7 @@ const Login = async (req, res, next) => {
 }
 
 const RegisterPharmacy = async (req, res, next) => {
-    // we get everything we require,we see what we require from model of pharmacy,right?
-    // then we make new user using all that data,let's do that now
+
     const newPharmacyToBeRegistered = req.body;
     if (!newPharmacyToBeRegistered) throw new ApiError(404, "Send body with user");
 
@@ -59,7 +58,7 @@ const RegisterPharmacy = async (req, res, next) => {
 
     // setting token in cookie
     setTokeninCookie(res, token);
-    res.json(new ApiResponse(200, { name: newPharmacy.name, email: newPharmacy.email }, "Registration Successful"))
+    res.json(new ApiResponse(200, { name: newPharmacy.name, email: newPharmacy.email }, "Pharmacy Registrated"))
 
 }
 export { Login, RegisterPharmacy }

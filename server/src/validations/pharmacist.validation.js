@@ -1,20 +1,23 @@
 import Joi from 'joi';
 
-
-const RegisterPharmacySchema = Joi.object({
+const RegisterPharmacistSchema = Joi.object({
     name: Joi.string().min(3).max(50).required(),
     email: Joi.string().email().max(254).required(),
     password: Joi.string().min(6).max(50).required(),
     licenseNumber: Joi.string().max(30).required(),
     contactNumber: Joi.string().pattern(/^\+?[0-9]{7,15}$/).required(),
-    address: Joi.string().max(100).required(),
+    addressLine: Joi.string().max(100).required(),
     city: Joi.string().max(50).required(),
+    state: Joi.string().max(50).optional(),
     country: Joi.string().max(50).required(),
+    postalCode: Joi.string().max(20).optional(),
+    specialization: Joi.string().max(50).optional(),
+    experience: Joi.number().min(0).optional()
 });
 
-const LoginPharmacySchema = Joi.object({
+const LoginPharmacistSchema = Joi.object({
     email: Joi.string().email().max(254).required(),
-    password: Joi.string().min(6).max(50).required(),
+    password: Joi.string().min(6).max(50).required()
 });
 
-export { RegisterPharmacySchema, LoginPharmacySchema };
+export { RegisterPharmacistSchema, LoginPharmacistSchema };

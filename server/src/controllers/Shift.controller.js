@@ -1,11 +1,6 @@
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import Shift from "../models/Shift.model.js";
-
-
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import Shift from "../models/Shift.model.js";
+import Shift from "../models/Shift.model.js"
 
 const CreateShift = async (req, res, next) => {
     try {
@@ -143,5 +138,31 @@ const DeleteShift = async (req, res, next) => {
         next(error);
     }
 };
+const ShowApplicants = async (req, res, next) => {
+    try {
+        const { shiftId } = req.params;
+        const pharmacyId = req.user.id;
 
-export { CreateShift, GetPharmacyShifts, GetAllShifts, UpdateShift, DeleteShift };
+        // Step 1: Find the shift by ID
+        const shiftWithApplicants = await Shift.findById(shiftId)
+            .populate({
+                path: "applications",
+                populate: { path: "pharmacistId", select: "name email" }
+            });
+
+        // Step 2: Check that shift exists AND belongs to this pharmacy
+        if (!shiftWithApplicants) {
+            return next(new ApiError(404, "Shift not found"));
+        }
+        if (shiftWithApplicants.pharmacyId.toString() !== pharmacyId) {
+            return next(new ApiError(403, "You are not allowed to view applicants for this shift"));
+        }
+
+
+        // (we’ll add population of applications later)
+        res.json(new ApiResponse(200, shiftWithApplicants, "Applicants retrieved successfully"));
+    } catch (error) {
+        next(error);
+    }
+}
+export { CreateShift, GetPharmacyShifts, GetAllShifts, UpdateShift, DeleteShift, ShowApplicants };

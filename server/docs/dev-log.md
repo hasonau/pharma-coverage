@@ -346,3 +346,91 @@ const overlapShift = await Shift.findOne({
   ],
 });
 ```
+
+## ShowApplicants API – List Applications
+
+**Endpoint:**  
+`GET /shifts/:shiftId/applicants`
+
+**Purpose:**  
+Allow a pharmacy to view all applicants for a specific shift they posted.
+
+**Workflow:**
+
+1. **Frontend:**
+   - Pharmacy clicks "View Applicants" button on their posted shifts.
+   - Sends `shiftId` in URL to backend.
+
+2. **Backend:**
+   - Extract `shiftId` from `req.params` and pharmacy ID from `req.user.id`.
+   - Query the Shift collection:
+
+```javascript
+const shiftWithApplicants = await Shift.findById(shiftId).populate({
+  path: "applications",
+  populate: { path: "pharmacistId", select: "name email" },
+});
+```
+
+### ShowApplicants API – Summary
+
+- **Purpose:** Allows a pharmacy to view all applicants for a specific shift they posted.
+
+- **Workflow:**
+  - Fetch the shift document using its ID.
+  - Populate each applicant’s pharmacist information (name and email).
+  - Perform an authorization check to ensure the requesting pharmacy owns the shift.
+  - If unauthorized, return a `403` error.
+  - If the shift does not exist or is not owned by the pharmacy, return a `404` error.
+
+- **Response Example:**
+  - Includes shift details (`_id`, `date`, `startTime`, `endTime`) and an array of applications.
+  - Each application contains the pharmacist's name, email, and application status.
+
+- **Notes:**
+  - Frontend should only show "View Applicants" for shifts posted by the logged-in pharmacy.
+  - Backend authorization ensures security and prevents unauthorized access.
+  - Optimization: fetch and authorization can be combined in a single query to reduce operations.
+
+## (Forgot making in previous days) Pharmacist Authentication (Register & Login)
+
+### Register Pharmacist
+
+**Endpoint:**  
+`POST /pharmacist/register`
+
+**Description:**  
+Allows a new pharmacist to create an account. On successful registration, a JWT token is generated and set in an HTTP-only cookie, so the pharmacist is logged in immediately.
+
+**Flow:**
+
+- Validates request body with Joi schema.
+- Checks if email already exists.
+- Checks if license number already exists.
+- Creates new pharmacist (password is hashed automatically).
+- Issues JWT token `{ id, role: "pharmacist" }` and stores in cookies.
+- Returns pharmacist’s basic info (name + email).
+
+**Note:**  
+Response can be viewed in Postman upon hitting this endpoint.
+
+---
+
+### Login Pharmacist
+
+**Endpoint:**  
+`POST /pharmacist/login`
+
+**Description:**  
+Authenticates pharmacist with email and password. On success, a JWT token is generated and set in an HTTP-only cookie.
+
+**Flow:**
+
+- Validates request body with Joi schema.
+- Looks up pharmacist by email.
+- Verifies password using bcrypt compare.
+- Issues JWT token `{ id, role: "pharmacist" }` and stores in cookies.
+- Returns pharmacist’s email.
+
+**Note:**  
+Response can be viewed in Postman upon hitting this endpoint.
