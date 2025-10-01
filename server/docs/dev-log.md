@@ -299,3 +299,50 @@
   "notes": "I am available and experienced with weekend shifts."
 }
 ```
+
+## Conflict Detection for Shifts
+
+We added logic to prevent pharmacies from creating **overlapping shifts** on the same day.
+
+### Validations Performed
+
+- All provided fields (`date`, `startTime`, `endTime`) must be valid dates.
+- `startTime < endTime`.
+- If `date` is **today**:
+  - `startTime` must be later than the current system time.
+  - (Optional small margin allowed, e.g. 2–3 minutes).
+- `date`, `startTime`, and `endTime` must all belong to the **same calendar day**.
+- Before saving a shift, check if another shift for the **same pharmacy** overlaps with the requested time.
+
+### Overlap Rule
+
+A new shift **overlaps** if:
+
+- Its `startTime` is before an existing shift’s `endTime`, **AND**
+- Its `endTime` is after an existing shift’s `startTime`.
+
+#### Example
+
+- Existing shift: `09:00 – 12:00`
+- New attempt:
+  - `11:30 – 14:00` → ❌ Overlaps (11:30–12:00) → rejected
+  - `12:00 – 15:00` → ✅ No overlap → allowed
+
+---
+
+### Query for Overlap Detection
+
+We implemented an overlap check during shift creation:
+
+```js
+const overlapShift = await Shift.findOne({
+  pharmacyId,
+  date: shiftDate,
+  $or: [
+    {
+      startTime: { $lt: end },
+      endTime: { $gt: start },
+    },
+  ],
+});
+```

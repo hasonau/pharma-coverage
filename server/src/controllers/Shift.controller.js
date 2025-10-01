@@ -2,24 +2,83 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import Shift from "../models/Shift.model.js";
 
+
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import Shift from "../models/Shift.model.js";
+
 const CreateShift = async (req, res, next) => {
     try {
-        const data = req.body;
+        const { date, startTime, endTime, ...rest } = req.body;
         const pharmacyId = req.user.id;
 
-        const newShift = await Shift.create({ ...data, pharmacyId });
+        // Convert into Date objects
+        const shiftDate = new Date(date);
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+        const now = new Date();
 
-        res.json(
-            new ApiResponse(201, newShift, "New Shift Created Successfully,in DB")
-        );
-    } catch (error) {
-        // Mongo duplicate key error (from compound index: date + startTime + endTime)
-        if (error.code === 11000) {
-            return next(new ApiError(400, "Shift already exists for this date and time"));
+        // Validate all inputs are valid dates
+        if (isNaN(shiftDate) || isNaN(start) || isNaN(end)) {
+            return next(new ApiError(400, "Invalid date or time provided"));
         }
-        next(error); // let global handler deal with anything else
+
+        // Ensure start < end
+        if (start >= end) {
+            return next(new ApiError(400, "startTime must be before endTime"));
+        }
+
+        // Ensure all times are on the same day
+        if (
+            shiftDate.toDateString() !== start.toDateString() ||
+            shiftDate.toDateString() !== end.toDateString()
+        ) {
+            return next(new ApiError(400, "date, startTime, and endTime must be on the same day"));
+        }
+
+        // Disallow past dates
+        if (shiftDate < new Date(now.toDateString())) {
+            return next(new ApiError(400, "Shift date cannot be in the past"));
+        }
+
+        // Special case: if date is today
+        if (shiftDate.toDateString() === now.toDateString()) {
+            // Add a small margin of 3 minutes
+            const minStart = new Date(now.getTime() + 3 * 60000);
+            if (start < minStart) {
+                return next(new ApiError(400, "Shift must start at least 3 minutes from now"));
+            }
+        }
+
+        // Overlap check (simplified for now, we’ll extend later)
+        const overlap = await Shift.findOne({
+            pharmacyId,
+            date: shiftDate,
+            $or: [
+                { startTime: { $lt: end }, endTime: { $gt: start } } // overlap condition
+            ]
+        });
+
+        if (overlap) {
+            return next(new ApiError(400, "Shift overlaps with an existing shift"));
+        }
+
+        // Create new shift
+        const newShift = await Shift.create({
+            pharmacyId,
+            date: shiftDate,
+            startTime: start,
+            endTime: end,
+            ...rest
+        });
+
+        res.json(new ApiResponse(201, newShift, "New Shift Created Successfully,in DB"));
+
+    } catch (error) {
+        next(error);
     }
 };
+
 const GetPharmacyShifts = async (req, res, next) => {
     try {
         const data = await Shift.find({ pharmacyId: req.user.id })
