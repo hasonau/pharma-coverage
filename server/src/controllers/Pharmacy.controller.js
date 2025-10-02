@@ -3,43 +3,47 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { generateToken, verifyToken } from "../utils/jwt.js"
 import { setTokeninCookie } from "../utils/cookie.js"
-
+import Application from "../models/Application.model.js"
+import Shift from "../models/Shift.model.js"
 
 const Login = async (req, res, next) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
 
-    // EMAIL AND PASSWORD,taken out from req.body
-    const { email, password } = req.body;
+        const UserFound = await Pharmacy.findOne({ email });
+        if (!UserFound) return res.status(404).json({ message: "Pharmacy not found with this email" });
 
-    // Extracting Pharmacy of that email provided
-    const UserFound = await Pharmacy.findOne({ email })
-    if (!UserFound) throw new ApiError(404, "Pharmacy not found with this email");
+        const isPasswordCorrect = await UserFound.comparePassword(password);
+        if (!isPasswordCorrect) return res.status(401).json({ message: "Wrong password" });
 
-    // if userFound,we check if password by user is same as password in MONGODB
-    const isPasswordCorrect = await UserFound.comparePassword(password)
-    if (!isPasswordCorrect) throw new ApiError(401, "Wrong Password")
+        const payload = { id: UserFound._id, role: "pharmacy" };
+        const token = generateToken(payload);
+        setTokeninCookie(res, token);
 
-    // payload we use to generate token,are ID AND ROLE
-    const payload = { id: UserFound._id, role: "pharmacy" };
-    const token = generateToken(payload);
-    console.log("Token : ", token)
+        res.json(new ApiResponse(200, "Login successful"));
+    } catch (error) {
+        // catches DB errors, bcrypt errors, or any other unexpected runtime errors
+        next(error);
+    }
+};
 
-    // setting token in cookie
-    setTokeninCookie(res, token);
-    res.json(new ApiResponse(200, "Login Succesfull"))
-
-}
 
 const RegisterPharmacy = async (req, res, next) => {
+    try {
+        const newPharmacyToBeRegistered = req.body;
+        if (!newPharmacyToBeRegistered) throw new ApiError(400, "Send body with user");
 
-    const newPharmacyToBeRegistered = req.body;
-    if (!newPharmacyToBeRegistered) throw new ApiError(404, "Send body with user");
+        const emailExists = await Pharmacy.findOne({ email: newPharmacyToBeRegistered.email });
+        if (emailExists) return res.status(400).json({ message: "Email already exists" });
 
-    const alreadyEmailExists = await Pharmacy.findOne({ email: newPharmacyToBeRegistered.email });
-    if (alreadyEmailExists) throw new ApiError(404, "Email already exists")
+        const contactExists = await Pharmacy.findOne({ contactNumber: newPharmacyToBeRegistered.contactNumber });
+        if (contactExists) return res.status(400).json({ message: "Contact number already in use" });
 
+        const licenseExists = await Pharmacy.findOne({ licenseNumber: newPharmacyToBeRegistered.licenseNumber });
+        if (licenseExists) return res.status(400).json({ message: "License number already exists" });
 
-    const newPharmacy = await Pharmacy.create(
-        {
+        const newPharmacy = await Pharmacy.create({
             name: newPharmacyToBeRegistered.name,
             email: newPharmacyToBeRegistered.email,
             password: newPharmacyToBeRegistered.password,
@@ -48,19 +52,25 @@ const RegisterPharmacy = async (req, res, next) => {
             city: newPharmacyToBeRegistered.city,
             country: newPharmacyToBeRegistered.country,
             contactNumber: newPharmacyToBeRegistered.contactNumber,
-            isVerified: newPharmacyToBeRegistered.isVerified,
-            role: newPharmacyToBeRegistered.role
+            isVerified: newPharmacyToBeRegistered.isVerified || false,
+            role: newPharmacyToBeRegistered.role || "pharmacy"
+        });
+
+        const payload = { id: newPharmacy._id, role: "pharmacy" };
+        const token = generateToken(payload);
+        setTokeninCookie(res, token);
+
+        res.json(new ApiResponse(200, { name: newPharmacy.name, email: newPharmacy.email }, "Pharmacy registered"));
+    } catch (error) {
+        // Catch race-condition duplicate key errors
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyValue)[0];
+            return res.status(400).json({ message: `${field} already exists` });
         }
-    );
-    const payload = { id: newPharmacy._id, role: "pharmacy" };
-    const token = generateToken(payload);
-    console.log("Token : ", token)
+        next(error);
+    }
+};
 
-    // setting token in cookie
-    setTokeninCookie(res, token);
-    res.json(new ApiResponse(200, { name: newPharmacy.name, email: newPharmacy.email }, "Pharmacy Registrated"))
-
-}
 const AcceptApplication = async (req, res, next) => {
     try {
         const { applicationId } = req.params;

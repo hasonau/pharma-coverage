@@ -38,7 +38,8 @@ const pharmacistSchema = new mongoose.Schema({
     },
     contactNumber: {
         type: String,
-        required: true
+        required: true,
+        unique: true,
     },
     // New location fields
     addressLine: { type: String, required: true },

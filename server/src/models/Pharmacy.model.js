@@ -30,10 +30,11 @@ const pharmacySchema = new mongoose.Schema({
     },
     contactNumber: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     // New location fields
-    addressLine: { type: String, required: true },
+    address: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String },
     country: { type: String, required: true },
