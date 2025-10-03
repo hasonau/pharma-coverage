@@ -1,6 +1,8 @@
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import Shift from "../models/Shift.model.js"
+import { date } from "joi";
+import Application from "../models/Application.model.js"
 
 const CreateShift = async (req, res, next) => {
     try {
@@ -165,4 +167,60 @@ const ShowApplicants = async (req, res, next) => {
         next(error);
     }
 }
+const RangeShifts = async (req, res, next) => {
+    // fetching from url
+    const { start, end } = req.query;
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return next(new ApiError(400, "Bad Request, invalid dates"));
+    }
+    if (endDate < startDate) {
+        return next(new ApiError(400, "End date must be greater than or equal to start date"));
+    }
+
+    // take out shifts according to role
+    let events;
+    if (req.user.role.toLowerCase() == "pharmacy") {
+        const shifts = await Shift.find({
+            pharmacyId: req.user.id,
+            startTime: { $gte: startDate },
+            endTime: { $lte: endDate }
+        });
+
+        events = shifts.map(shift => ({
+            id: shift._id,
+            title: `Shift at Pharmacy`,  // or shift.description
+            start: shift.startTime,
+            end: shift.endTime,
+            status: "owner"   // <– you forgot to set something here
+        }));
+    } else {
+        const applications = await Application.find({ pharmacistId: req.user.id });
+        const shiftIDs = applications.map(application => application.shiftId);
+
+        const shifts = await Shift.find({
+            _id: { $in: shiftIDs },
+            startTime: { $gte: startDate },
+            endTime: { $lte: endDate }
+        });
+
+        events = shifts.map(shift => {
+            // find application for this shift
+            const app = applications.find(a => String(a.shiftId) == String(shift._id));
+            return {
+                id: shift._id,
+                start: shift.startTime,
+                end: shift.endTime,
+                title: "Shift at Pharmacy",
+                status: app ? app.status : "unknown"
+            };
+        });
+    }
+    return res.json(new ApiResponse(200, events, "Calendar events fetched"));
+    // till here we got our intended event object, right?
+};
+
 export { CreateShift, GetPharmacyShifts, GetAllShifts, UpdateShift, DeleteShift, ShowApplicants };

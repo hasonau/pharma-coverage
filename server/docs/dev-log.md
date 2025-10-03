@@ -366,3 +366,94 @@
 - Pharmacist register/login
 - Accept/Reject applications
 - DB indexing
+
+# Day 6 – Calendar APIs (Work Log)
+
+## Morning (2 hrs) – Flexible Calendar Endpoint
+
+### Step 1: Decide API Endpoint
+
+- Chose a **single flexible endpoint** instead of separate ones for week/month.
+- Endpoint:
+  ```http
+  GET /api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD
+  ```
+- Frontend controls the date range (day/week/month).
+
+### Step 2: Event Shape
+
+- Each shift transformed into a minimal event object for frontend calendar libraries.
+- Structure decided:
+  ```json
+  {
+    "id": "shiftId",
+    "title": "Shift at Pharmacy",
+    "start": "shift.startTime",
+    "end": "shift.endTime",
+    "status": "applied/accepted/confirmed/owner"
+  }
+  ```
+
+### Step 3: Date Validation
+
+- Extracted `start` and `end` from `req.query`.
+- Converted to Date objects.
+- Validations:
+  - Check if both are valid dates.
+  - Check if `end >= start`.
+  - Return 400 Bad Request for invalid inputs.
+
+### Step 4: Fetching Shifts
+
+- Query only shifts within given range:
+  ```javascript
+  startTime: { $gte: startDate },
+  endTime: { $lte: endDate }
+  ```
+- Handled separately for Pharmacy and Pharmacist roles.
+
+### Step 5: Role-Based Filtering
+
+**Pharmacy:**
+
+- Only fetch shifts created by that pharmacy (`pharmacyId: req.user.id`).
+- Event status = "owner".
+
+**Pharmacist:**
+
+- First fetch applications by that pharmacist.
+- Extract all `shiftIds`.
+- Find shifts where `_id ∈ shiftIds` AND inside date range.
+- Match each shift with its application → set event status = `app.status`.
+
+### Step 6: Format Events
+
+- Used `.map()` to transform DB docs → event objects.
+- Preserved `id`, `title`, `start`, `end`.
+- Added `status` from role context (owner or application status).
+
+### Step 7: Response
+
+- Return final events array wrapped in ApiResponse:
+  ```javascript
+  res.json(new ApiResponse(200, events, "Calendar events fetched"));
+  ```
+
+## Afternoon (Planned Next)
+
+### Testing:
+
+- With pharmacy role (see only own shifts).
+- With pharmacist role (see only applied/accepted/confirmed shifts).
+- Different ranges: day, week, month.
+
+### Edge cases:
+
+- No shifts.
+- Overlapping shifts.
+- Invalid date ranges.
+
+## Progress Today
+
+- Finished endpoint logic, validations, role-based filtering, event transformation.
+- Next: Testing with sample data + refining frontend display.

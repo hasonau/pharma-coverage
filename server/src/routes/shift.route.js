@@ -3,7 +3,7 @@ import { authMiddleware } from "../middlewares/Auth.middleware.js"
 import { requireRole } from "../middlewares/requireRole.middleware.js"
 import { CreateShiftSchema, UpdateShiftSchema } from "../validations/shift.validation.js"
 import { validate } from "../middlewares/validate.js"
-import { CreateShift, GetAllShifts, GetPharmacyShifts, UpdateShift, DeleteShift, ShowApplicants } from "../controllers/Shift.controller.js"
+import { CreateShift, GetAllShifts, GetPharmacyShifts, UpdateShift, DeleteShift, ShowApplicants, RangeShifts } from "../controllers/Shift.controller.js"
 
 const ShiftRouter = express.Router();
 
@@ -14,3 +14,4 @@ ShiftRouter.put("/:id", authMiddleware, requireRole("Pharmacy"), validate(Update
 ShiftRouter.delete("/:id", authMiddleware, requireRole("Pharmacy"), DeleteShift);
 ShiftRouter.get("/:shiftId/applications", authMiddleware, requireRole("Pharmacy"), ShowApplicants);
 export { ShiftRouter };
+ShiftRouter.get("/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD", authMiddleware, RangeShifts)
