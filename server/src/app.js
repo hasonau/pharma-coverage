@@ -7,6 +7,7 @@ import { ShiftRouter } from "./routes/shift.route.js"
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { PharmacistRouter } from "./routes/pharmacist.route.js";
+import { SearchRouter } from "./routes/search.route.js";
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -36,6 +37,7 @@ app.use(cookieParser())
 app.use("/api/pharmacy/", PharmacyRouter)
 app.use("/api/shifts/", ShiftRouter)
 app.use("/api/pharmacist/", PharmacistRouter); // Pharmacist routes
+app.use("/api/search/", SearchRouter);
 
 //#endregion
 
