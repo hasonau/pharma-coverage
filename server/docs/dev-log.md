@@ -457,3 +457,159 @@
 
 - Finished endpoint logic, validations, role-based filtering, event transformation.
 - Next: Testing with sample data + refining frontend display.
+
+# Day 7 – Advanced Queries & Search System
+
+### **Goal**
+
+Implement a flexible, role-based search system for both pharmacies and pharmacists that allows filtering shifts dynamically through query parameters.
+
+---
+
+### **Morning (2 hrs) – Designing the Search API**
+
+We decided to build a **dedicated Search Router** to separate search logic from other modules (like calendar and shift APIs).  
+This helps keep concerns clear and future scaling easier (e.g., adding pagination or sorting later).
+
+## Endpoints added:
+
+        -GET /api/search/pharmacy
+        -GET /api/search/pharmacist
+
+Both routes are protected and role-specific, using `authMiddleware` and `requireRole`.
+
+---
+
+### **Pharmacy Search**
+
+**Controller:** `PharmacySearch`
+
+**Purpose:**  
+Allow pharmacies to search and filter through **their own posted shifts** using optional filters.
+
+**Filters supported:**
+
+- `city`
+- `urgency`
+- `shiftType`
+- `start` (date)
+- `end` (date)
+
+**Implementation details:**
+
+- Built a dynamic query object:
+  ```js
+  const query = {};
+  if (city) query.city = city;
+  if (urgency) query.urgency = urgency;
+  if (shiftType) query.shiftType = shiftType;
+  if (start) query.startTime = { $gte: new Date(start) };
+  if (end) query.endTime = { $lte: new Date(end) };
+  query.pharmacyId = req.user.id;
+  ```
+- Fetched all matching shifts from DB with Shift.find(query).
+
+- Returned results wrapped in ApiResponse for consistent formatting.
+
+### If no shifts match → returns a friendly message:
+
+      - "No Shifts found for given filters"
+
+Reasoning:
+Pharmacies only need to view and manage their own shifts, so filtering by their pharmacyId ensures data isolation.
+
+## Pharmacist Search
+
+### Controller: PharmacistSearch
+
+#### Purpose:
+
+Allow pharmacists to discover available shifts based on location, urgency, type, or date — while clearly showing which ones they’ve already applied to.
+
+#### Logic flow:
+
+1. Default filter added: query.status = "open".
+
+2. Applied same dynamic filters (city, urgency, shiftType, start, end).
+
+3. Retrieved all Application documents for logged-in pharmacist:
+
+   ```javascript
+   const apps = await Application.find({ pharmacistId: req.user.id }).select(
+     "shiftId"
+   );
+   const appliedShiftIds = apps.map((app) => app.shiftId.toString());
+   ```
+
+4. Fetched all shifts using built query.
+
+5. Mapped shifts to a new array, adding isApplied field:
+
+   ```javascript
+   const resultShifts = shiftsFound.map((shift) => ({
+     ...shift._doc,
+     isApplied: appliedShiftIds.includes(shift._id.toString()),
+   }));
+   ```
+
+6. Returned structured response:
+
+   ```javascript
+   return res.json(
+     new ApiResponse(200, resultShifts, "Shifts fetch for pharmacist")
+   );
+   ```
+
+### Reasoning:
+
+Pharmacists should easily identify which shifts they’ve already applied for.
+The isApplied field enables the frontend to disable or gray out “Apply” buttons for those shifts.
+
+### Integration
+
+Routes defined in SearchRouter.js:
+
+```javascript
+SearchRouter.get(
+  "/pharmacy",
+  authMiddleware,
+  requireRole("pharmacy"),
+  PharmacySearch
+);
+SearchRouter.get(
+  "/pharmacist",
+  authMiddleware,
+  requireRole("pharmacist"),
+  PharmacistSearch
+);
+```
+
+## Testing Plan (Deferred to Day 8)
+
+- Verify correct filtering for both roles.
+
+- Ensure isApplied behaves correctly.
+
+- Test partial and empty filters.
+
+- Add fallback defaults (like showing open or city-based shifts when filters are missing).
+
+## Outcome
+
+✅ Implemented full search system with dynamic filtering.
+✅ Clean, modular architecture.
+✅ Role-based logic and secure access.
+✅ Added computed field (isApplied) for better UX.
+
+## Next Steps (Day 8)
+
+- Postman testing of all filters.
+
+- Add default behavior for empty filters.
+
+- Optional: Pagination or sorting for scalability.
+
+## Progress
+
+- Backend completion: ~85% of Day 7
+- Focus achieved: Query building, filtering logic, and role-based responses.
