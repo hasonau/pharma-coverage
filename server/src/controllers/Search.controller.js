@@ -1,6 +1,7 @@
-import Shift from "../models/Shift.model";
+import Shift from "../models/Shift.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import Application from "../models/Application.model.js";
 
 const PharmacySearch = async (req, res, next) => {
     // here goes the logic now,

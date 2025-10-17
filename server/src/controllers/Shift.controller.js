@@ -1,7 +1,6 @@
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import Shift from "../models/Shift.model.js"
-import { date } from "joi";
 import Application from "../models/Application.model.js"
 
 const CreateShift = async (req, res, next) => {
@@ -223,4 +222,4 @@ const RangeShifts = async (req, res, next) => {
     // till here we got our intended event object, right?
 };
 
-export { CreateShift, GetPharmacyShifts, GetAllShifts, UpdateShift, DeleteShift, ShowApplicants };
+export { CreateShift, GetPharmacyShifts, GetAllShifts, UpdateShift, DeleteShift, ShowApplicants, RangeShifts };

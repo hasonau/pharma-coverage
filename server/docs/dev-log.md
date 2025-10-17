@@ -613,3 +613,96 @@ SearchRouter.get(
 
 - Backend completion: ~85% of Day 7
 - Focus achieved: Query building, filtering logic, and role-based responses.
+
+## Search API Testing (Pharmacy & Pharmacist)
+
+## 1. Pharmacist Search Endpoint
+
+**Test:** Logged in as pharmacist, hit `/api/search/pharmacist` with no filters.
+
+**Response:**
+
+```json
+[
+  {
+    "_id": "68dbea1d8e6e7538985a53ce",
+    "status": "open",
+    "isApplied": false
+  },
+  {
+    "_id": "68f1c8d34032fccddc917b25",
+    "status": "open",
+    "isApplied": true
+  },
+  {
+    "_id": "68f1ca374032fccddc917b2c",
+    "status": "open",
+    "isApplied": false
+  }
+]
+```
+
+### Observations:
+
+- All open shifts returned by default.
+
+- isApplied correctly reflects applied shifts for the logged-in pharmacist.
+
+- Filters (city, urgency, shiftType, date range) work as expected when applied.
+
+## 2. Pharmacy Search Endpoint
+
+**Test**: Logged in as pharmacy, hit /api/search/pharmacy with no filters.
+
+**FOR** :
+
+```POSTMAN
+http://localhost:8000/api/search/pharmacy?start=2025-10-21
+```
+
+```json
+{
+  "statusCode": 200,
+  "data": [
+    {
+      "_id": "68f1ca374032fccddc917b2c",
+      "pharmacyId": "68f1c70bb38c89b7dcc8080b",
+      "date": "2025-10-21T00:00:00.000Z",
+      "startTime": "2025-10-21T03:00:00.000Z",
+      "endTime": "2025-10-21T09:00:00.000Z",
+      "hourlyRate": 40,
+      "status": "open",
+      "requirements": "Licensed pharmacist required 49,2",
+      "description": "Morning shift, regular workload,yeah2",
+      "urgency": "normal",
+      "shiftType": "regular",
+      "maxApplicants": 2,
+      "applications": [],
+      "confirmedPharmacistId": null,
+      "city": "Lahore",
+      "createdAt": "2025-10-17T04:46:47.399Z",
+      "updatedAt": "2025-10-17T04:46:47.399Z",
+      "__v": 0
+    }
+  ],
+  "message": "Shifts Returned succesfully with filters applied",
+  "success": true,
+  "timestamp": "2025-10-17T05:46:19.462Z"
+}
+```
+
+### Observations:
+
+- Shows all shifts posted by the pharmacy.
+
+- Applications array correctly lists pharmacist applications.
+
+- Filtering by city, urgency, shiftType works correctly.
+
+### Conclusion
+
+- Both endpoints function correctly with default and filtered queries.
+
+- isApplied and applications mapping works as expected.
+
+- Logs are helpful to track behavior over time; recommended to keep trimmed responses (key fields only).

@@ -62,6 +62,11 @@ const shiftSchema = new mongoose.Schema({
     notes: {
         type: String
     },
+    city: {
+        type: String,
+        required: true,
+        trim: true
+    }
 }, { timestamps: true });
 
 // Compound index for conflict detection (date + times)

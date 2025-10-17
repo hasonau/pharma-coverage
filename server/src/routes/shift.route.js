@@ -14,4 +14,4 @@ ShiftRouter.put("/:id", authMiddleware, requireRole("Pharmacy"), validate(Update
 ShiftRouter.delete("/:id", authMiddleware, requireRole("Pharmacy"), DeleteShift);
 ShiftRouter.get("/:shiftId/applications", authMiddleware, requireRole("Pharmacy"), ShowApplicants);
 export { ShiftRouter };
-ShiftRouter.get("/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD", authMiddleware, RangeShifts)
+ShiftRouter.get("/calendar", authMiddleware, RangeShifts)
