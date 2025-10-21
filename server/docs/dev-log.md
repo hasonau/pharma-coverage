@@ -706,3 +706,81 @@ http://localhost:8000/api/search/pharmacy?start=2025-10-21
 - isApplied and applications mapping works as expected.
 
 - Logs are helpful to track behavior over time; recommended to keep trimmed responses (key fields only).
+
+# Day 8 – Redis & Queue Infrastructure
+
+## Morning (2 hrs) – Redis & BullMQ Setup
+
+### Objective
+
+Introduce asynchronous background job processing using **Redis** and **BullMQ**.
+
+### Redis Setup
+
+- Installed and configured **Redis 7+** inside **WSL2 (Ubuntu)** for full Linux compatibility.
+- Verified successful connection between Windows Node.js app and Redis running in WSL2.
+- Confirmed working ping response (`PONG`) through `testRedis.js`.
+
+### Conceptual Learning
+
+- **Redis as a message broker**: enables background job handling.
+- Understood Redis data structures used in queues (mainly **Lists**).
+- Learned Redis persistence types (**RDB** snapshots, **AOF** logs).
+- Understood why Redis dropped native Windows support and why WSL2 provides native-like performance.
+
+---
+
+## Midday (1.5 hrs) – BullMQ Fundamentals
+
+### Learning Focus
+
+- Explored BullMQ’s role as the **queue management layer** built on top of Redis.
+- Understood the lifecycle of a job:
+  - **Queue (Producer)** adds jobs.
+  - **Worker (Consumer)** processes jobs asynchronously.
+  - **Redis** acts as the shared bridge between them.
+- Covered key BullMQ concepts:
+  - Job retries, concurrency, and events (`completed`, `failed`).
+
+---
+
+## Afternoon (1.5 hrs) – Hello World Implementation
+
+### Experiment Setup
+
+- Created independent **experiment folder** with:
+  - Queue file
+  - Worker file
+  - Producer test
+- Implemented and successfully ran **Hello World job** where:
+  - Producer added a test job (`sendEmail` mock).
+  - Worker picked it up, processed it, and completed it successfully.
+- Fixed BullMQ configuration issue (`maxRetriesPerRequest` required to be `null`).
+- Verified clean job flow in logs:
+  - Job added → processed → completed ✅
+
+### Results
+
+- Redis + BullMQ now working end-to-end.
+- Confirmed that Windows app communicates seamlessly with WSL2 Redis instance using `127.0.0.1`.
+
+---
+
+## Key Learnings
+
+- **Redis 7+ on WSL2** = true Linux performance inside Windows.
+- **BullMQ** simplifies queue management while leveraging Redis under the hood.
+- Separation of concerns:
+  - API publishes jobs.
+  - Worker consumes them asynchronously.
+- Redis connection tuning parameters (`maxRetriesPerRequest`, `enableReadyCheck`) required for BullMQ compatibility.
+- Practical understanding of job queues, workers, and async task design in Node.js.
+
+---
+
+## Day Outcome
+
+✅ Redis + BullMQ Hello World experiment successfully executed.  
+✅ Redis and Node app communication verified.  
+✅ Infrastructure foundation complete for async background jobs.  
+➡️ Ready for **Day 9: Email Notification System**, where real email tasks will be integrated into the queue.
