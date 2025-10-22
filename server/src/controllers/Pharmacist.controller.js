@@ -1,10 +1,13 @@
 import { ApiError } from "../utils/ApiError.js";
 import Shift from "../models/Shift.model.js"
 import Application from "../models/Application.model.js"
+import Pharmacy from '../models/Pharmacy.model.js'
 import { ApiResponse } from "../utils/ApiResponse.js";
 import Pharmacist from "../models/Pharmacist.model.js"
 import { generateToken, verifyToken } from "../utils/jwt.js"
 import { setTokeninCookie } from "../utils/cookie.js";
+import { emailQueue } from "../queues/emailQueue.js";
+import { generateApplicationEmail } from "../utils/generateApplicationEmail.js";
 
 const RegisterPharmacist = async (req, res, next) => {
     try {
@@ -108,6 +111,26 @@ const ApplyToShift = async (req, res, next) => {
     ShiftFound.applications.push(applicationCreated._id);
     await ShiftFound.save();
 
+
+    //#region  redis Related work here
+    // 
+    const pharmacyFound = await Pharmacy.findById(ShiftFound.pharmacyId);
+    const pharmacistFound = await Pharmacist.findById(req.user.id);
+    const jobBody = generateApplicationEmail({
+        pharmacyName: pharmacyFound.name,
+        pharmacistName: pharmacistFound.name,
+        licenseNumber: pharmacistFound.licenseNumber,
+        shiftDate: ShiftFound.date,
+        notes,
+        dashboardURL: ""
+    });
+    const job = {
+        to: pharmacyFound.email,
+        subject: "New Application recived for SHIFT", // we can show which shfit,by showing time range of it or date hmm
+        body: jobBody,
+    }
+    await emailQueue.add("sendEmail", job);
+    //#endregion
     res.json(new ApiResponse(200, applicationCreated, "Application Sent to the Shift's Pharmacy"))
     //#endregion
 }
