@@ -784,3 +784,97 @@ Introduce asynchronous background job processing using **Redis** and **BullMQ**.
 ✅ Redis and Node app communication verified.  
 ✅ Infrastructure foundation complete for async background jobs.  
 ➡️ Ready for **Day 9: Email Notification System**, where real email tasks will be integrated into the queue.
+
+# Day 9 – Email Notification System (Async + BullMQ + Nodemailer)
+
+## Morning (2 hrs) – Asynchronous Email Architecture
+
+### Objective
+
+Implement a **background email notification system** using **Redis**, **BullMQ**, and **Nodemailer** so that when a pharmacist applies for a shift, the pharmacy receives an email without blocking the API response.
+
+### Setup & Integration
+
+- Verified **Redis 7+** setup inside WSL2 and ensured connectivity between Node.js and Redis.
+- Confirmed `Redis client ready` logs in console to verify stable connection.
+- Introduced **BullMQ** queue and worker structure for managing background email jobs.
+- Created `emailQueue` to act as the **Producer**, responsible for enqueueing jobs.
+- Implemented a **Worker** process that listens to `emailQueue` and processes jobs asynchronously using Redis.
+
+### Result
+
+Successfully established a working connection between BullMQ and Redis, preparing the foundation for async email processing.
+
+---
+
+## Midday (2 hrs) – Email Utility and HTML Template
+
+### Implementation
+
+- Integrated **Nodemailer** with **Ethereal** for local email testing.
+- Created an email utility that sends formatted HTML emails to simulate real-world notifications.
+- Implemented a reusable email template generator to create structured messages containing:
+  - Pharmacist name and license number.
+  - Shift date and notes.
+  - Pharmacy dashboard link placeholder.
+- Ensured consistent styling and branding within the email body.
+
+### Verification
+
+- Verified SMTP connection through `transporter.verify()`.
+- Observed successful logs confirming that Nodemailer could connect and send emails using the generated Ethereal test account.
+
+---
+
+## Afternoon (2 hrs) – Controller Integration and End-to-End Test
+
+### ApplyToShift Integration
+
+- Updated **ApplyToShift controller** to trigger an email job whenever a pharmacist applies to a shift.
+- System flow:
+  1. Pharmacist applies → Application document created.
+  2. Shift’s `applications` array updated.
+  3. Pharmacy and Pharmacist info fetched.
+  4. Email body generated using the template utility.
+  5. Email job added to BullMQ queue for asynchronous processing.
+
+### Testing & Validation
+
+- Ran both server and worker simultaneously (`npm run dev` + `npm run worker:email`).
+- Observed full log sequence:
+  - `Redis client ready`
+  - `Job added to queue`
+  - `Email job processed successfully`
+- Verified Ethereal preview URL in browser — HTML email rendered correctly.
+
+---
+
+## Evening (1 hr) – Final Checks & Observations
+
+### Results
+
+- Queue-based email notification system now fully functional.
+- Emails sent asynchronously without delaying API responses.
+- Redis manages retries and guarantees reliable job delivery.
+- Verified that the ApplyToShift endpoint now triggers real background email notifications end-to-end.
+
+---
+
+## Key Learnings
+
+- **Redis** acts as the communication backbone for job management.
+- **BullMQ** simplifies asynchronous processing with reliable retry logic.
+- **Nodemailer (Ethereal)** provides realistic local testing before production migration.
+- Clean separation of responsibilities between:
+  - API → Publishes job
+  - Worker → Consumes and executes job
+  - Redis → Bridges both reliably
+
+---
+
+## Day Outcome
+
+✅ Email queue, worker, and utility implemented successfully.  
+✅ End-to-end workflow validated via Ethereal.  
+✅ Controller integrated with background job system.  
+🚀 Fully asynchronous, production-ready notification architecture completed.
