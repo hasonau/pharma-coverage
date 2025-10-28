@@ -87,7 +87,6 @@ const LoginPharmacist = async (req, res, next) => {
 
 
 const ApplyToShift = async (req, res, next) => {
-    // we do all the work here
     //#region Checking before creation of anything in DB
     const { notes } = req.body;
     const { id } = req.user;
@@ -101,6 +100,49 @@ const ApplyToShift = async (req, res, next) => {
     });
 
     if (applicationFound) return next(new ApiError(400, "Already applied"))
+    //#region COMMENT
+    // before creating application we have to check if the shift requires pharmacist confirmation
+    // we check if requiresPharmacistConfirmation is true,it means,we can just move on and create application and save shift and else things,everything remains as it was happening,right,because here we don't need to check conflicts,we are allowing pharmacist to apply to this,without any hesitation
+    // but what if requiresPharmacistConfirmation is false,that means,no confirmation from pharmacist if pharmacy accepts,so we set requiresPharmacistConfirmation as false,or maybe wait,in this case,what we do is,we actually check that pharmacist's already applied applicatoins,and see if there is any shift he's applied to that overlaps with this one where he is applying now,because if he has applied for any other shift A with 9-12 timing,and now he is applying for this shift which is 10-12,wait another thing,we can allow pharmacist to apply to overlapping shift as well,because when pharmacist is applying for this shift,if he gets accepted here,and accepted for that other shift of 9-12,now if this 9-12 shift has requiresPharmacistConfirmation true,it means pharmacist can still reject that one,and because he is accepted for this one as well,but we can't allow pharmaicst to apply to a shift which is overlapping as well as whose requiresPharmacistConfirmation is false,then comes the problem that if he gets accepted at both he will not be able to go to both,if requiresPharmacistConfirmation is true and time overlaps,it's fine,because pharmacist can cnacel that first shfit if got accepted for this new shift where he has no option but to come,he should be vigilant that if this 10-12 shift is auto accept,and is paying 10 dollars,and that 9-12 shift is paying 15 dollars,if he gets accepted for both,he will surely have to come to 10 dollars one,because of auto accept of this shift,
+    //#endregion
+    const activeApplications = await Application.find({
+        pharmacistId: id,
+        status: { $in: ["applied", "offered", "accepted"] }
+    }).populate("shiftId");
+    let conflictFound = false;
+    let conflictingShiftIds = [];
+
+    for (const app of activeApplications) {
+        const existingShift = app.shiftId;
+        if (!existingShift) continue;
+
+        const overlaps =
+            ShiftFound.startTime < existingShift.endTime &&
+            ShiftFound.endTime > existingShift.startTime;
+
+        if (!overlaps) continue;
+
+        // Block only if both are Type B (auto-confirm)
+        if (
+            !ShiftFound.requiresPharmacistConfirmation &&
+            !existingShift.requiresPharmacistConfirmation
+        ) {
+            conflictFound = true;
+            conflictingShiftIds.push(existingShift._id);
+        }
+    }
+    if (conflictFound) {
+        return next(
+            new ApiError(
+                400,
+                "Cannot apply: overlapping auto-confirm shifts found",
+                { conflicts: conflictingShiftIds }
+            )
+        );
+    }
+
+
+
     const applicationCreated = await Application.create(
         {
             pharmacistId: req.user.id,

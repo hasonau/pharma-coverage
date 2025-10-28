@@ -74,43 +74,70 @@ const RegisterPharmacy = async (req, res, next) => {
 const AcceptApplication = async (req, res, next) => {
     try {
         const { applicationId } = req.params;
-        const pharmacyId = req.user.id; // logged-in pharmacy
+        const pharmacyId = req.user.id;
 
-        // 1. Find the application
         const application = await Application.findById(applicationId);
         if (!application) throw new ApiError(404, "Application not found");
 
-        // 2. Find the related shift
         const shift = await Shift.findById(application.shiftId);
         if (!shift) throw new ApiError(404, "Shift not found");
 
-        // 3. Authorization: check pharmacy owns this shift
-        if (shift.pharmacyId.toString() !== pharmacyId) {
+        if (shift.pharmacyId.toString() !== pharmacyId)
             throw new ApiError(403, "You are not authorized to manage this shift");
-        }
 
-        // 4. Check if shift already filled
-        if (shift.status === "filled") {
+        if (shift.status === "filled")
             throw new ApiError(400, "This shift is already filled");
+
+
+        if (!shift.requiresPharmacistConfirmation) {
+            // TYPE B — auto-confirm, no pharmacist confirmation step
+            // → immediately reject others & withdraw overlapping apps
+
+            await Application.updateMany(
+                { shiftId: shift._id, _id: { $ne: applicationId } },
+                { $set: { status: "rejected" } }
+            );
+
+            shift.status = "filled";
+            shift.confirmedPharmacistId = application.pharmacistId;
+            await shift.save();
+
+            // Also withdraw overlapping (A or B) applications of the same pharmacist
+            const pharmacistId = application.pharmacistId;
+            const activeApps = await Application.find({
+                pharmacistId,
+                _id: { $ne: application._id },
+                status: { $in: ["applied", "offered", "accepted"] }
+            }).populate("shiftId");
+
+            const overlappingIds = [];
+            for (const app of activeApps) {
+                const otherShift = app.shiftId;
+                if (!otherShift) continue;
+
+                const overlaps =
+                    shift.startTime < otherShift.endTime &&
+                    shift.endTime > otherShift.startTime;
+
+                if (overlaps) overlappingIds.push(app._id);
+            }
+            if (overlappingIds.length > 0) {
+                await Application.updateMany(
+                    { _id: { $in: overlappingIds } },
+                    { $set: { status: "withdrawn" } }
+                );
+            }
+            application.status = "accepted";
+            await application.save();
+
+        } else {
+            // TYPE A — pharmacist must confirm manually
+            // → set application.status to 'offered' (not 'accepted' yet)
+            // → do NOT reject other applicants yet
+            application.status = "offered";
+            await application.save();
         }
 
-        // 5. Accept this application
-        application.status = "accepted";
-        await application.save();
-
-        // 6. Reject all other applications for the same shift
-        await Application.updateMany(
-            { shiftId: shift._id, _id: { $ne: applicationId } },
-            { $set: { status: "rejected" } }
-        );
-
-        // 7. Update shift status
-        shift.status = "filled";
-        shift.confirmedPharmacistId = application.pharmacistId;
-        await shift.save();
-
-        // 8. Response
-        res.json(new ApiResponse(200, { applicationId }, "Application accepted successfully"));
     } catch (error) {
         next(error);
     }

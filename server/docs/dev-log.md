@@ -1021,3 +1021,168 @@ Tested the default value of the new field `requiresPharmacistConfirmation` to co
 **Step 1 – Add `requiresPharmacistConfirmation` Flag**  
 All subtasks (1.1–1.7) successfully completed and validated.  
 Next stage → **Step 2: Update ApplyToShift logic (handle overlap + smart blocking).**
+
+# 🧩 Pre–Day 10 Development Log
+
+### Step 2 – Update ApplyToShift Logic (Handle Overlap + Smart Blocking)
+
+---
+
+### Overview
+
+This step focused on refining the **ApplyToShift** controller to handle complex overlap scenarios between pharmacist shift applications.  
+We introduced smarter business logic that respects the new `requiresPharmacistConfirmation` flag to avoid conflicts between **instant-book (Type B)** and **confirmation-based (Type A)** shifts.
+
+---
+
+## ✅ 2.1 – Preliminary Review of Existing Apply Logic
+
+- Reviewed current implementation to understand base flow:
+  - Verifies shift existence and openness.
+  - Ensures pharmacist has not already applied.
+  - Creates a new application and links it to the shift.
+  - Sends an email notification via BullMQ queue.
+- Identified missing conflict prevention logic for overlapping shifts.
+
+---
+
+## ✅ 2.2 – Define Business Rules for Overlapping Applications
+
+Established clear behavioral rules governing overlap conditions between existing and new shift applications:
+
+| Case       | Allow Apply? | Reason                                                   |
+| ---------- | ------------ | -------------------------------------------------------- |
+| **A ↔ A** | ✅ Allowed   | Pharmacist can later choose; confirmation required.      |
+| **A ↔ B** | ✅ Allowed   | Pharmacist can decline A if accepted for auto-confirm B. |
+| **B ↔ A** | ✅ Allowed   | No conflict; B is firm but A can still be withdrawn.     |
+| **B ↔ B** | ❌ Block     | Prevents double-booking with no opt-out option.          |
+
+- These rules ensure flexibility while maintaining platform trust and preventing schedule collisions.
+- Discussed atomicity concerns — concluded that **B↔B overlaps** are the only truly dangerous case.
+
+---
+
+## ✅ 2.3 – Implemented Smart Overlap Detection in ApplyToShift
+
+- Added query to fetch all **active applications** (`applied`, `offered`, `accepted`) for the pharmacist.
+- Populated each with its corresponding `shiftId` for access to time ranges and flag data.
+- Introduced loop to detect overlapping shifts based on time window comparison:
+  - `ShiftFound.startTime < existingShift.endTime && ShiftFound.endTime > existingShift.startTime`
+  - If both shifts are **Type B (auto-confirm)** → block application and return conflict details.
+  - All other combinations allowed as per rule table above.
+- Preserved previous validations, email queue, and DB consistency steps.
+
+---
+
+### Outcome
+
+- The **ApplyToShift** controller now intelligently blocks only unsafe overlap scenarios.
+- Pharmacists can safely apply to multiple shifts with predictable and fair restrictions.
+- Error responses clearly indicate conflicting shift IDs when a block occurs.
+- This completes **Step 2.3** of the pre–Day 10 logic refactor.
+
+---
+
+**Next Step → Step 2.4: Auto-withdraw overlapping A-type applications when B-type is accepted.**
+
+## ✅ Step 2.4 – Auto-Withdraw Overlapping A-Type Applications When B-Type is Accepted
+
+## Overview
+
+Once a **Type B (auto-confirm)** application is accepted, any overlapping **Type A applications** for the same pharmacist should be **automatically withdrawn**.  
+This prevents scheduling conflicts while allowing pharmacists to maintain control over Type A shifts if no conflicts exist.
+
+---
+
+## Implementation Highlights
+
+- Fetch all **active applications** (`applied`, `offered`, `accepted`) for the pharmacist.
+- Identify overlaps using the time window:
+
+```js
+shift.startTime < otherShift.endTime && shift.endTime > otherShift.startTime;
+```
+
+- Only overlapping applications are targeted.
+- Overlapping Type A applications are updated with:
+
+```js
+status = "withdrawn";
+```
+
+- Type B application is accepted and shift is marked `filled`.
+- Other applications for the same shift are `rejected`.
+- **Atomicity considerations**: updates occur in sequence; optionally could be wrapped in a MongoDB transaction for full safety.
+
+---
+
+## ✅ Step 2.5 – Confirm Correct Application Creation Behavior Per Shift Type
+
+## ✅ Overview
+
+Ensures that application and shift statuses correctly reflect Type A vs Type B rules:
+
+| Shift Type | Application Status | Shift Status | Notes                                                            |
+| ---------- | ------------------ | ------------ | ---------------------------------------------------------------- |
+| Type B     | `accepted`         | `filled`     | Overlapping A applications withdrawn; other applicants rejected. |
+| Type A     | `offered`          | `open`       | Pharmacist manually confirms; other applicants untouched.        |
+
+- Guarantees consistent backend behavior.
+- Status updates match business logic and frontend expectations.
+
+---
+
+## ✅Step 2.6 – Test Scenarios (Deferred)
+
+## Overview
+
+Step 2.6 is dedicated to testing all scenarios to verify correctness:
+
+### Type B Acceptance:
+
+- Shift marked `filled`.
+- Other applications `rejected`.
+- Overlapping A applications `withdrawn`.
+
+### Type A Offer:
+
+- Application marked `offered`.
+- Shift remains `open`.
+- No interference with other applications.
+
+### Overlap Handling:
+
+- Pharmacist cannot accidentally double-book for auto-confirm shifts.
+- Manual confirmation shifts remain flexible.
+
+### Edge Cases:
+
+- Missing or invalid shift/application IDs.
+- Unauthorized access.
+- Already filled shifts.
+
+**Note**: Actual testing is deferred until all pre-Day 10 steps are complete. Logs, Postman, or automated tests can verify the full workflow.
+Step 2.6 is dedicated to **testing all scenarios** to verify correctness:
+
+- Type B acceptance:
+  - Shift marked `filled`.
+  - Other applications rejected.
+  - Overlapping A applications withdrawn.
+- Type A offer:
+  - Application marked `offered`.
+  - Shift remains open.
+  - No interference with other applications.
+- Overlap handling:
+  - Pharmacist cannot accidentally double-book for auto-confirm shifts.
+  - Manual confirmation shifts remain flexible.
+- Edge cases:
+  - Missing or invalid shift/application IDs.
+  - Unauthorized access.
+  - Already filled shifts.
+
+> ⚠️ **NOTE:**
+>
+> - **Type A**: _Pharmacist confirmation required_ — pharmacist must manually accept the shift; shift is not auto-filled.
+> - **Type B**: _Auto-confirm / instant booking_ — shift is immediately accepted upon pharmacy approval; no pharmacist confirmation is needed.
+
+> **Testing is deferred** until all pre-Day 10 steps are complete. Logs, Postman, or automated tests can verify the full workflow.
