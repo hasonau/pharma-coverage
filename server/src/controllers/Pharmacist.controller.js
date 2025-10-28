@@ -100,11 +100,6 @@ const ApplyToShift = async (req, res, next) => {
     });
 
     if (applicationFound) return next(new ApiError(400, "Already applied"))
-    //#region COMMENT
-    // before creating application we have to check if the shift requires pharmacist confirmation
-    // we check if requiresPharmacistConfirmation is true,it means,we can just move on and create application and save shift and else things,everything remains as it was happening,right,because here we don't need to check conflicts,we are allowing pharmacist to apply to this,without any hesitation
-    // but what if requiresPharmacistConfirmation is false,that means,no confirmation from pharmacist if pharmacy accepts,so we set requiresPharmacistConfirmation as false,or maybe wait,in this case,what we do is,we actually check that pharmacist's already applied applicatoins,and see if there is any shift he's applied to that overlaps with this one where he is applying now,because if he has applied for any other shift A with 9-12 timing,and now he is applying for this shift which is 10-12,wait another thing,we can allow pharmacist to apply to overlapping shift as well,because when pharmacist is applying for this shift,if he gets accepted here,and accepted for that other shift of 9-12,now if this 9-12 shift has requiresPharmacistConfirmation true,it means pharmacist can still reject that one,and because he is accepted for this one as well,but we can't allow pharmaicst to apply to a shift which is overlapping as well as whose requiresPharmacistConfirmation is false,then comes the problem that if he gets accepted at both he will not be able to go to both,if requiresPharmacistConfirmation is true and time overlaps,it's fine,because pharmacist can cnacel that first shfit if got accepted for this new shift where he has no option but to come,he should be vigilant that if this 10-12 shift is auto accept,and is paying 10 dollars,and that 9-12 shift is paying 15 dollars,if he gets accepted for both,he will surely have to come to 10 dollars one,because of auto accept of this shift,
-    //#endregion
     const activeApplications = await Application.find({
         pharmacistId: id,
         status: { $in: ["applied", "offered", "accepted"] }
@@ -128,18 +123,17 @@ const ApplyToShift = async (req, res, next) => {
             !existingShift.requiresPharmacistConfirmation
         ) {
             conflictFound = true;
-            conflictingShiftIds.push(existingShift._id);
+            conflictingShiftIds.push(app._id);
         }
     }
-    if (conflictFound) {
-        return next(
-            new ApiError(
-                400,
-                "Cannot apply: overlapping auto-confirm shifts found",
-                { conflicts: conflictingShiftIds }
-            )
-        );
+    if (conflictingShiftIds.length > 0) {
+        return res.status(409).json({
+            status: "conflict",
+            message: "Overlapping auto-confirm shift(s) found",
+            conflicts: conflictingShiftIds // send application IDs causing conflict
+        });
     }
+
 
 
 
@@ -176,5 +170,200 @@ const ApplyToShift = async (req, res, next) => {
     res.json(new ApiResponse(200, applicationCreated, "Application Sent to the Shift's Pharmacy"))
     //#endregion
 }
+const UnApplyShift = async (req, res, next) => {
+    try {
+        const { applicationId } = req.params;
+        const pharmacistId = req.user.id;
 
-export { ApplyToShift, RegisterPharmacist, LoginPharmacist };
+        // 1. Find the application
+        const application = await Application.findById(applicationId).populate("shiftId");
+        if (!application) return next(new ApiError(404, "Application not found"));
+
+        // 2. Validate ownership
+        if (application.pharmacistId.toString() !== pharmacistId)
+            return next(new ApiError(403, "You can only withdraw your own applications"));
+
+        // 3. Validate status
+        const shift = application.shiftId;
+        if (!shift) return next(new ApiError(404, "Associated shift not found"));
+
+        if (
+            application.status === "accepted" &&
+            !shift.requiresPharmacistConfirmation
+        ) {
+            return next(new ApiError(
+                400,
+                "Cannot withdraw: Type B application is already accepted"
+            ));
+        }
+
+        if (!["applied", "offered"].includes(application.status)) {
+            return next(new ApiError(
+                400,
+                `Cannot withdraw application with status '${application.status}'`
+            ));
+        }
+
+        // 4. Update application status to withdrawn
+        application.status = "withdrawn";
+        await application.save();
+
+        // 5. Remove application from shift.applications array
+        await Shift.findByIdAndUpdate(shift._id, {
+            $pull: { applications: application._id }
+        });
+
+        // 6. Optional: enqueue notification email to pharmacy
+        const pharmacy = await Pharmacy.findById(shift.pharmacyId);
+        if (pharmacy) {
+            const jobBody = generateApplicationEmail({
+                pharmacyName: pharmacy.name,
+                pharmacistName: req.user.name || "Pharmacist",
+                licenseNumber: req.user.licenseNumber || "",
+                shiftDate: shift.date,
+                notes: application.notes,
+                action: "withdrawn",
+                dashboardURL: ""
+            });
+            const job = {
+                to: pharmacy.email,
+                subject: "Application Withdrawn",
+                body: jobBody
+            };
+            await emailQueue.add("sendEmail", job);
+        }
+
+        res.json(new ApiResponse(200, application, "Application withdrawn successfully"));
+
+    } catch (error) {
+        next(error);
+    }
+};
+const switchShiftApplication = async (req, res, next) => {
+    try {
+        const { oldApplicationId, newShiftId } = req.body;
+        const pharmacistId = req.user.id;
+
+        // 1️⃣ Fetch old application
+        const oldApplication = await Application.findById(oldApplicationId).populate("shiftId");
+        if (!oldApplication) return next(new ApiError(404, "Old application not found"));
+
+        // Validate ownership
+        if (oldApplication.pharmacistId.toString() !== pharmacistId)
+            return next(new ApiError(403, "You can only withdraw your own applications"));
+
+        const oldShift = oldApplication.shiftId;
+        if (!oldShift) return next(new ApiError(404, "Associated old shift not found"));
+
+        // Check Type B accepted condition
+        if (oldApplication.status === "accepted" && !oldShift.requiresPharmacistConfirmation) {
+            return next(new ApiError(400, "Cannot switch: old Type B shift already accepted"));
+        }
+
+        // Check other valid statuses
+        if (!["applied", "offered"].includes(oldApplication.status)) {
+            return next(new ApiError(400, `Cannot switch old application with status '${oldApplication.status}'`));
+        }
+
+        // 2️⃣ Withdraw old application
+        oldApplication.status = "withdrawn";
+        await oldApplication.save();
+        await Shift.findByIdAndUpdate(oldShift._id, { $pull: { applications: oldApplication._id } });
+
+        // Optional: notify old shift pharmacy
+        const oldPharmacy = await Pharmacy.findById(oldShift.pharmacyId);
+        if (oldPharmacy) {
+            const jobBody = generateApplicationEmail({
+                pharmacyName: oldPharmacy.name,
+                pharmacistName: req.user.name || "Pharmacist",
+                licenseNumber: req.user.licenseNumber || "",
+                shiftDate: oldShift.date,
+                notes: oldApplication.notes,
+                action: "withdrawn",
+                dashboardURL: ""
+            });
+            await emailQueue.add("sendEmail", {
+                to: oldPharmacy.email,
+                subject: "Application Withdrawn",
+                body: jobBody
+            });
+        }
+
+        // 3️⃣ Attempt to apply to new shift
+        const newShift = await Shift.findById(newShiftId);
+        if (!newShift) return next(new ApiError(404, "New shift not found"));
+
+        const existingApplication = await Application.findOne({
+            pharmacistId,
+            shiftId: newShiftId,
+            status: { $in: ["applied", "offered", "accepted"] }
+        });
+        if (existingApplication) {
+            // Rollback old application
+            oldApplication.status = "applied";
+            await oldApplication.save();
+            oldShift.applications.push(oldApplication._id);
+            await oldShift.save();
+            return next(new ApiError(409, "Already applied to the new shift. Old shift restored"));
+        }
+
+        // Create new application
+        const newApplication = await Application.create({
+            pharmacistId,
+            shiftId: newShiftId,
+            status: "applied",
+            notes: req.body.notes || ""
+        });
+        newShift.applications.push(newApplication._id);
+        await newShift.save();
+
+        // Optional: notify new shift pharmacy
+        const newPharmacy = await Pharmacy.findById(newShift.pharmacyId);
+        if (newPharmacy) {
+            const jobBody = generateApplicationEmail({
+                pharmacyName: newPharmacy.name,
+                pharmacistName: req.user.name || "Pharmacist",
+                licenseNumber: req.user.licenseNumber || "",
+                shiftDate: newShift.date,
+                notes: newApplication.notes,
+                action: "applied",
+                dashboardURL: ""
+            });
+            await emailQueue.add("sendEmail", {
+                to: newPharmacy.email,
+                subject: "New Application Received",
+                body: jobBody
+            });
+        }
+
+        res.status(200).json(new ApiResponse(
+            200,
+            newApplication,
+            "Successfully switched application to the new shift"
+        ));
+
+    } catch (error) {
+        // Attempt rollback if new application creation failed
+        try {
+            const oldApplication = await Application.findById(req.body.oldApplicationId);
+            if (oldApplication && oldApplication.status === "withdrawn") {
+                oldApplication.status = "applied";
+                await oldApplication.save();
+                const oldShift = await Shift.findById(oldApplication.shiftId);
+                if (oldShift && !oldShift.applications.includes(oldApplication._id)) {
+                    oldShift.applications.push(oldApplication._id);
+                    await oldShift.save();
+                }
+            }
+        } catch (rollbackError) {
+            console.error("Rollback failed:", rollbackError);
+        }
+
+        next(new ApiError(500, "Switch failed. Old shift restored if possible."));
+    }
+};
+
+
+
+
+export { ApplyToShift, RegisterPharmacist, LoginPharmacist, UnApplyShift, switchShiftApplication };
