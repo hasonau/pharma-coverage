@@ -66,6 +66,10 @@ const shiftSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true
+    },
+    requiresPharmacistConfirmation: {
+        type: Boolean,
+        default: true
     }
 }, { timestamps: true });
 

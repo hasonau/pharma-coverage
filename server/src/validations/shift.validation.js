@@ -10,7 +10,8 @@ const CreateShiftSchema = Joi.object({
     description: Joi.string().max(500).optional(),
     urgency: Joi.string().valid("normal", "urgent").default("normal"),
     shiftType: Joi.string().valid("regular", "emergency", "weekend").default("regular"),
-    maxApplicants: Joi.number().min(0).default(0)
+    maxApplicants: Joi.number().min(0).default(0),
+    requiresPharmacistConfirmation: Joi.boolean().default(true)
 });
 const UpdateShiftSchema = Joi.object({
     date: Joi.date().optional(),

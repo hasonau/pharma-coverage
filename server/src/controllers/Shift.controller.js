@@ -86,7 +86,7 @@ const GetPharmacyShifts = async (req, res, next) => {
 const GetAllShifts = async (req, res, next) => {
     try {
         const { date, shiftType, urgency, status } = req.query;
-        const filter = {};
+        const filter = { status: "open" }; // default filter to only get open shifts
         if (date) filter.date = date;            // only add if date exists
         if (shiftType) filter.shiftType = shiftType; // only add if shiftType exists
         if (urgency) filter.urgency = urgency;
@@ -110,7 +110,8 @@ const UpdateShift = async (req, res, next) => {
         if (!shift) {
             return next(new ApiError(404, "Shift not found or not yours to update"));
         }
-
+        // Remove any fields that should not be updated
+        delete updateData.requiresPharmacistConfirmation;
         // Update allowed fields
         Object.assign(shift, updateData);
         await shift.save();

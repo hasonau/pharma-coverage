@@ -878,3 +878,146 @@ Successfully established a working connection between BullMQ and Redis, preparin
 ✅ End-to-end workflow validated via Ethereal.  
 ✅ Controller integrated with background job system.  
 🚀 Fully asynchronous, production-ready notification architecture completed.
+
+# 🧩 Pre–Day 10 Development Log
+
+### Step 1 – Add `requiresPharmacistConfirmation` Flag
+
+---
+
+### Overview
+
+Introduced a new boolean field in the **Shift** model to control whether a pharmacist must confirm a pharmacy’s offer before a shift becomes final.  
+This addition lays the foundation for supporting both confirmation-required and instant-booking workflows in the system.
+
+---
+
+### Completed Tasks
+
+#### 1.1 – Added Field to Shift Model
+
+- Added `requiresPharmacistConfirmation` field to the `Shift` schema.
+- Default value set to `true`.
+- Purpose: Define shift behavior mode (confirmation required vs instant booking).
+
+#### 1.2 – Verified Default Behavior
+
+- Created a new shift through the API without including the field.
+- Confirmed the flag automatically defaults to `true` and appears in the response.
+- Ensured Redis setup did not interfere with core operations.
+
+#### 1.3 – Added Validation
+
+- Updated Joi schema to include `requiresPharmacistConfirmation` as a boolean with default `true`.
+- Keeps input clean and ensures backend consistency with model defaults.
+
+#### 1.4 – Controller Adjustments
+
+- Confirmed that `CreateShift` controller already supports the new field automatically via `...rest` spread.
+- Decided that pharmacies **cannot update** this flag after shift creation.
+- Added logic in `UpdateShift` controller to ignore any incoming attempts to modify this field.
+- Final rule: _“This field is immutable after creation.”_
+
+---
+
+### Summary of Current Behavior
+
+- When pharmacy creates a shift, flag defaults to `true` unless explicitly set to `false`.
+- Pharmacists will later see this flag when viewing available shifts for clarity.
+- Any update attempts on this field are silently ignored.
+- Design principle established: the flag defines workflow type and cannot be changed later.
+
+---
+
+### Current Progress
+
+Step 1 completed up to Task 1.4  
+Next up → Task 1.5 (Migration for existing shifts).
+
+### 🧩 Task 1.5 – Migration for Existing Shifts
+
+---
+
+#### Overview
+
+After introducing the new `requiresPharmacistConfirmation` field in the **Shift** model, older documents in the database would not automatically contain this property.  
+A migration process ensures that all existing shifts are updated to include the field and align with the new system behavior.
+
+---
+
+#### Purpose
+
+- Maintain consistency across all existing and future shift documents.
+- Prevent logic errors in later steps that depend on this flag.
+- Keep production data backward compatible with the updated model.
+
+---
+
+#### Migration Approach
+
+In production, a one-time migration script or MongoDB command would be executed to find all shifts missing the field and set its value to `true`.  
+This operation is **idempotent** — running it multiple times is safe because it o
+
+### 🧩 Task 1.6 – Expose Flag in GET Endpoints (Continued)
+
+---
+
+#### Additional Route Design Decision
+
+Reviewed the `/api/shifts` route configuration to determine proper access and filtering behavior.
+
+- The endpoint `GET /api/shifts` serves as the **public listing** of all available shifts.
+- Pharmacies already have a protected route `GET /api/shifts/myShifts` for managing their own postings.
+- Therefore, `GET /api/shifts` remains **unauthenticated** (no `authMiddleware`), allowing pharmacists or guests to browse open shifts.
+
+#### Enhancement for Data Integrity
+
+Added a default filter `{ status: "open" }` in the `GetAllShifts` controller to ensure that:
+
+- Only **active and available** shifts are returned.
+- Cancelled or filled shifts are hidden from the public list.
+- Prevents confusion and preserves expected UX consistency.
+
+#### Outcome
+
+The flag `requiresPharmacistConfirmation` now appears correctly in all relevant GET endpoints, and public access is limited to open shifts only.  
+Shift visibility and role-based data boundaries are now well-defined and enforced.
+
+### 🧩 Task 1.7 – Verify Default Behavior of `requiresPharmacistConfirmation`
+
+---
+
+#### Overview
+
+Tested the default value of the new field `requiresPharmacistConfirmation` to confirm that it behaves as expected when omitted during shift creation.
+
+---
+
+#### Procedure
+
+- Created a new shift via the **POST /api/shifts/create** endpoint.
+- The request body **did not include** the `requiresPharmacistConfirmation` field.
+- Observed both the API response and stored document in MongoDB.
+
+---
+
+#### Observations
+
+- The API response included `"requiresPharmacistConfirmation": true`.
+- This confirmed that Mongoose correctly applied the schema default.
+- No explicit logic was required in the controller or validation layers.
+- The system now guarantees consistent default behavior for all future shift creations.
+
+---
+
+#### Outcome
+
+- ✅ Verified that the field automatically defaults to `true` when omitted.
+- ✅ No unintended side effects or missing fields.
+- ✅ Default behavior stable across model, validation, and controller layers.
+
+---
+
+**Step 1 – Add `requiresPharmacistConfirmation` Flag**  
+All subtasks (1.1–1.7) successfully completed and validated.  
+Next stage → **Step 2: Update ApplyToShift logic (handle overlap + smart blocking).**
