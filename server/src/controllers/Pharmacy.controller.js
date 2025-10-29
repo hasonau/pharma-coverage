@@ -130,12 +130,28 @@ const AcceptApplication = async (req, res, next) => {
             application.status = "accepted";
             await application.save();
 
+            return res
+                .status(200)
+                .json(new ApiResponse(
+                    200,
+                    application,
+                    "Application accepted and pharmacist confirmed (Type B)"
+                ));
+
         } else {
             // TYPE A — pharmacist must confirm manually
             // → set application.status to 'offered' (not 'accepted' yet)
             // → do NOT reject other applicants yet
             application.status = "offered";
             await application.save();
+            // ✅ Response for Type A
+            return res
+                .status(200)
+                .json(new ApiResponse(
+                    200,
+                    application,
+                    "Application offered to pharmacist for confirmation (Type A)"
+                ));
         }
 
     } catch (error) {

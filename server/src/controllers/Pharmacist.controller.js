@@ -362,8 +362,109 @@ const switchShiftApplication = async (req, res, next) => {
         next(new ApiError(500, "Switch failed. Old shift restored if possible."));
     }
 };
+const confirmOffer = async (req, res, next) => {
+    try {
+        const { applicationId } = req.params;
+        const pharmacistId = req.user.id;
+
+        // 1️⃣ Find application and validate ownership
+        const application = await Application.findById(applicationId).populate("shiftId");
+        if (!application) throw new ApiError(404, "Application not found");
+
+        if (application.pharmacistId.toString() !== pharmacistId)
+            throw new ApiError(403, "You are not authorized to respond to this offer");
+
+        const shift = application.shiftId;
+        if (!shift) throw new ApiError(404, "Associated shift not found");
+
+        // 2️⃣ Validate that it's currently 'offered'
+        if (application.status !== "offered")
+            throw new ApiError(400, "Only offered applications can be confirmed");
+
+        // 3️⃣ Update statuses
+        application.status = "accepted";
+        await application.save();
+
+        shift.status = "filled";
+        shift.confirmedPharmacistId = pharmacistId;
+        await shift.save();
+
+        // 4️⃣ Reject all other applicants for this same shift
+        await Application.updateMany(
+            { shiftId: shift._id, _id: { $ne: application._id } },
+            { $set: { status: "rejected" } }
+        );
+
+        // 5️⃣ Withdraw pharmacist's other overlapping applications
+        const activeApps = await Application.find({
+            pharmacistId,
+            _id: { $ne: application._id },
+            status: { $in: ["applied", "offered", "accepted"] }
+        }).populate("shiftId");
+
+        const overlappingIds = [];
+        for (const app of activeApps) {
+            const otherShift = app.shiftId;
+            if (!otherShift) continue;
+
+            const overlaps =
+                shift.startTime < otherShift.endTime &&
+                shift.endTime > otherShift.startTime;
+
+            if (overlaps) overlappingIds.push(app._id);
+        }
+
+        if (overlappingIds.length > 0) {
+            await Application.updateMany(
+                { _id: { $in: overlappingIds } },
+                { $set: { status: "withdrawn" } }
+            );
+        }
+
+        return res
+            .status(200)
+            .json(new ApiResponse(
+                200,
+                application,
+                "Offer confirmed successfully. Shift filled (Type A)."
+            ));
+
+    } catch (error) {
+        next(error);
+    }
+};
+const rejectOffer = async (req, res, next) => {
+    try {
+        const { applicationId } = req.params;
+        const pharmacistId = req.user.id;
+
+        const application = await Application.findById(applicationId).populate("shiftId");
+        if (!application) throw new ApiError(404, "Application not found");
+
+        if (application.pharmacistId.toString() !== pharmacistId)
+            throw new ApiError(403, "You are not authorized to respond to this offer");
+
+        if (application.status !== "offered")
+            throw new ApiError(400, "Only offered applications can be rejected");
+
+        // 1️⃣ Mark this application as rejected
+        application.status = "rejected";
+        await application.save();
+
+        // 2️⃣ Keep shift open and other applicants untouched
+        return res
+            .status(200)
+            .json(new ApiResponse(
+                200,
+                application,
+                "Offer rejected successfully. Shift remains open."
+            ));
+
+    } catch (error) {
+        next(error);
+    }
+};
 
 
 
-
-export { ApplyToShift, RegisterPharmacist, LoginPharmacist, UnApplyShift, switchShiftApplication };
+export { ApplyToShift, RegisterPharmacist, LoginPharmacist, UnApplyShift, switchShiftApplication, confirmOffer, rejectOffer };

@@ -1,5 +1,5 @@
 import express from 'express';
-import { ApplyToShift, LoginPharmacist, RegisterPharmacist, UnApplyShift, switchShiftApplication } from "../controllers/Pharmacist.controller.js";
+import { ApplyToShift, LoginPharmacist, RegisterPharmacist, UnApplyShift, switchShiftApplication, rejectOffer, confirmOffer } from "../controllers/Pharmacist.controller.js";
 import { requireRole } from "../middlewares/requireRole.middleware.js";
 import { validate } from "../middlewares/validate.js"
 import { RegisterPharmacistSchema, LoginPharmacistSchema } from "../validations/pharmacist.validation.js"
@@ -13,5 +13,7 @@ PharmacistRouter.delete("/unapply/:applicationId", authMiddleware, requireRole("
 PharmacistRouter.post("/switch", authMiddleware, requireRole("pharmacist"), switchShiftApplication);
 PharmacistRouter.post("/register", validate(RegisterPharmacistSchema), RegisterPharmacist);
 PharmacistRouter.post("/login", validate(LoginPharmacistSchema), LoginPharmacist);
+PharmacistRouter.post("/confirm-offer/:applicationId", authMiddleware, requireRole("pharmacist"), confirmOffer);
+PharmacistRouter.post("/reject-offer/:applicationId", authMiddleware, requireRole("pharmacist"), rejectOffer);
 
 export { PharmacistRouter };
