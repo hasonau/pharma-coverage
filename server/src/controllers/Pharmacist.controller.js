@@ -87,89 +87,109 @@ const LoginPharmacist = async (req, res, next) => {
 
 
 const ApplyToShift = async (req, res, next) => {
-    //#region Checking before creation of anything in DB
-    const { notes } = req.body;
-    const { id } = req.user;
-    const shiftId = req.params.shiftId;
-    const ShiftFound = await Shift.findById(shiftId)
-    if (!ShiftFound) return next(new ApiError(404, "This shiftID doesn't exist in SHIFT Model"))
-    if (ShiftFound.status !== "open") return next(new ApiError(404, "Shift is not open" || "Shift has been closed"))
-    const applicationFound = await Application.findOne({
-        shiftId: shiftId,
-        pharmacistId: id
-    });
+    try {
+        const { notes } = req.body;
+        const { id } = req.user;
+        const shiftId = req.params.shiftId;
 
-    if (applicationFound) return next(new ApiError(400, "Already applied"))
-    const activeApplications = await Application.find({
-        pharmacistId: id,
-        status: { $in: ["applied", "offered", "accepted"] }
-    }).populate("shiftId");
-    let conflictFound = false;
-    let conflictingShiftIds = [];
+        const ShiftFound = await Shift.findById(shiftId);
+        if (!ShiftFound) return next(new ApiError(404, "This shiftID doesn't exist in SHIFT Model"));
+        if (ShiftFound.status !== "open") return next(new ApiError(404, "Shift is not open or has been closed"));
 
-    for (const app of activeApplications) {
-        const existingShift = app.shiftId;
-        if (!existingShift) continue;
-
-        const overlaps =
-            ShiftFound.startTime < existingShift.endTime &&
-            ShiftFound.endTime > existingShift.startTime;
-
-        if (!overlaps) continue;
-
-        // Block only if both are Type B (auto-confirm)
-        if (
-            !ShiftFound.requiresPharmacistConfirmation &&
-            !existingShift.requiresPharmacistConfirmation
-        ) {
-            conflictFound = true;
-            conflictingShiftIds.push(app._id);
-        }
-    }
-    if (conflictingShiftIds.length > 0) {
-        return res.status(409).json({
-            status: "conflict",
-            message: "Overlapping auto-confirm shift(s) found",
-            conflicts: conflictingShiftIds // send application IDs causing conflict
+        // 🟢 Check if pharmacist already has an active application
+        const existingActive = await Application.findOne({
+            shiftId,
+            pharmacistId: id,
+            status: { $in: ["applied", "offered", "accepted"] }
         });
-    }
+        if (existingActive) return next(new ApiError(400, "Already applied"));
 
+        // 🟡 Reuse withdrawn/rejected if exists
+        let application = await Application.findOne({
+            shiftId,
+            pharmacistId: id,
+            status: { $in: ["withdrawn", "rejected"] }
+        });
 
-
-
-    const applicationCreated = await Application.create(
-        {
-            pharmacistId: req.user.id,
-            shiftId: shiftId,
-            notes: notes
+        if (application) {
+            application.status = "applied";
+            application.notes = notes;
+            await application.save();
+        } else {
+            application = await Application.create({
+                pharmacistId: id,
+                shiftId,
+                notes
+            });
         }
-    )
-    ShiftFound.applications.push(applicationCreated._id);
-    await ShiftFound.save();
 
+        // 🧩 Overlap check — exclude the same shift being applied for
+        const activeApplications = await Application.find({
+            pharmacistId: id,
+            status: { $in: ["applied", "offered", "accepted"] },
+            shiftId: { $ne: shiftId } // ✅ exclude this same shift
+        }).populate("shiftId");
 
-    //#region  redis Related work here
-    // 
-    const pharmacyFound = await Pharmacy.findById(ShiftFound.pharmacyId);
-    const pharmacistFound = await Pharmacist.findById(req.user.id);
-    const jobBody = generateApplicationEmail({
-        pharmacyName: pharmacyFound.name,
-        pharmacistName: pharmacistFound.name,
-        licenseNumber: pharmacistFound.licenseNumber,
-        shiftDate: ShiftFound.date,
-        notes,
-        dashboardURL: ""
-    });
-    const job = {
-        to: pharmacyFound.email,
-        subject: "New Application recived for SHIFT", // we can show which shfit,by showing time range of it or date hmm
-        body: jobBody,
+        let conflictingShiftIds = [];
+        for (const app of activeApplications) {
+            const existingShift = app.shiftId;
+            if (!existingShift) continue;
+
+            const overlaps =
+                ShiftFound.startTime < existingShift.endTime &&
+                ShiftFound.endTime > existingShift.startTime;
+
+            if (!overlaps) continue;
+
+            // ❗ Block only if both are Type B (auto-confirm)
+            if (
+                !ShiftFound.requiresPharmacistConfirmation &&
+                !existingShift.requiresPharmacistConfirmation
+            ) {
+                conflictingShiftIds.push(app._id);
+            }
+        }
+
+        if (conflictingShiftIds.length > 0) {
+            return res.status(409).json({
+                status: "conflict",
+                message: "Overlapping auto-confirm shift(s) found",
+                conflicts: conflictingShiftIds
+            });
+        }
+
+        // 🟢 Link application to shift
+        if (!ShiftFound.applications.includes(application._id)) {
+            ShiftFound.applications.push(application._id);
+            await ShiftFound.save();
+        }
+
+        // 📨 Notify pharmacy via queue
+        const pharmacyFound = await Pharmacy.findById(ShiftFound.pharmacyId);
+        const pharmacistFound = await Pharmacist.findById(id);
+
+        const jobBody = generateApplicationEmail({
+            pharmacyName: pharmacyFound.name,
+            pharmacistName: pharmacistFound.name,
+            licenseNumber: pharmacistFound.licenseNumber,
+            shiftDate: ShiftFound.date,
+            notes,
+            dashboardURL: ""
+        });
+
+        const job = {
+            to: pharmacyFound.email,
+            subject: "New Application received for SHIFT",
+            body: jobBody
+        };
+        await emailQueue.add("sendEmail", job);
+
+        return res.json(new ApiResponse(200, application, "Application Sent to the Shift's Pharmacy"));
+
+    } catch (error) {
+        next(error);
     }
-    await emailQueue.add("sendEmail", job);
-    //#endregion
-    res.json(new ApiResponse(200, applicationCreated, "Application Sent to the Shift's Pharmacy"))
-    //#endregion
-}
+};
 const UnApplyShift = async (req, res, next) => {
     try {
         const { applicationId } = req.params;

@@ -1024,7 +1024,7 @@ Next stage → **Step 2: Update ApplyToShift logic (handle overlap + smart block
 
 # 🧩 Pre–Day 10 Development Log
 
-### Step 2 – Update ApplyToShift Logic (Handle Overlap + Smart Blocking)
+## Step 2 – Update ApplyToShift Logic (Handle Overlap + Smart Blocking)
 
 ---
 
@@ -1186,3 +1186,66 @@ Step 2.6 is dedicated to **testing all scenarios** to verify correctness:
 > - **Type B**: _Auto-confirm / instant booking_ — shift is immediately accepted upon pharmacy approval; no pharmacist confirmation is needed.
 
 > **Testing is deferred** until all pre-Day 10 steps are complete. Logs, Postman, or automated tests can verify the full workflow.
+
+---
+
+## ✅ Step 3 – Implement Pharmacist Response Endpoints (Confirm / Reject Offers)
+
+### Overview
+
+Added pharmacist-side endpoints to allow confirming or rejecting Type A offers manually.
+
+| Action        | Endpoint                                            | Outcome                                                                                                                                                                |
+| ------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirm Offer | `POST /api/pharmacist/confirm-offer/:applicationId` | Marks application as **accepted**, shift as **filled**, rejects other applicants for the same shift, and withdraws overlapping active applications of that pharmacist. |
+| Reject Offer  | `POST /api/pharmacist/reject-offer/:applicationId`  | Marks application as **rejected**, leaves shift **open**, and does not affect other applicants.                                                                        |
+
+### Safeguards
+
+- Pharmacist can only confirm or reject **their own** applications (`403 Forbidden` otherwise).
+- Confirm endpoint validates that application status = `offered` — pharmacists cannot self-accept unoffered shifts.
+- Atomic updates ensure all related records (shift + other apps) remain consistent.
+
+---
+
+## ✅ Step 4 – Implement Un-Apply / Reverse Apply (Switch Shift)
+
+### Overview
+
+Added endpoints so pharmacists can withdraw or switch their applications before confirmation.
+
+| Action       | Endpoint                                        | Key Behavior                                                                                    |
+| ------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Un-Apply     | `DELETE /api/pharmacist/unapply/:applicationId` | Withdraws the application (status → `withdrawn`) unless it’s an already-accepted Type B.        |
+| Switch Shift | `POST /api/pharmacist/switch`                   | Allows pharmacist to withdraw an overlapping app and apply to another shift in one atomic step. |
+
+### Validations
+
+- Pharmacists can only withdraw their own applications.
+- Cannot withdraw Type B applications once accepted (`400 Bad Request`).
+- Withdrawn apps are reusable on re-apply (handled via `$nin` status filter).
+
+---
+
+## ✅ Step 5 – Final Testing & Verification
+
+### Postman / Manual Testing
+
+All real-world flows tested and validated:
+
+1. **Registration + Login** for both roles.
+2. **Type A flow** — Apply → Offer → Confirm / Reject.
+3. **Type B flow** — Auto-confirm + withdraw restriction.
+4. **Withdraw / Re-apply logic** — confirmed working.
+5. **Overlap rules** — only B↔B blocked; others allowed.
+6. **Unauthorized access attempts** — properly return 403.
+
+### Outcome
+
+All controllers, routes, and DB states behave as expected.  
+This concludes all **Pre-Day 10 implementation**; the system is now stable and ready for:
+
+> **Day 10 → Async Conflict Worker (Redis/BullMQ)**  
+> Automates overlap checks and asynchronous withdrawals.
+
+---
