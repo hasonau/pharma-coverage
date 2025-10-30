@@ -7,6 +7,7 @@ import Pharmacist from "../models/Pharmacist.model.js"
 import { generateToken, verifyToken } from "../utils/jwt.js"
 import { setTokeninCookie } from "../utils/cookie.js";
 import { emailQueue } from "../queues/emailQueue.js";
+import { conflictQueue } from "../queues/conflictQueue.js";
 import { generateApplicationEmail } from "../utils/generateApplicationEmail.js";
 
 const RegisterPharmacist = async (req, res, next) => {
@@ -84,27 +85,29 @@ const LoginPharmacist = async (req, res, next) => {
         next(error);
     }
 };
-
-
 const ApplyToShift = async (req, res, next) => {
     try {
         const { notes } = req.body;
         const { id } = req.user;
         const shiftId = req.params.shiftId;
 
+        // 1️⃣ Find target shift
         const ShiftFound = await Shift.findById(shiftId);
-        if (!ShiftFound) return next(new ApiError(404, "This shiftID doesn't exist in SHIFT Model"));
-        if (ShiftFound.status !== "open") return next(new ApiError(404, "Shift is not open or has been closed"));
+        if (!ShiftFound)
+            return next(new ApiError(404, "This shiftID doesn't exist in SHIFT Model"));
+        if (ShiftFound.status !== "open")
+            return next(new ApiError(404, "Shift is not open or has been closed"));
 
-        // 🟢 Check if pharmacist already has an active application
+        // 2️⃣ Prevent duplicate active application
         const existingActive = await Application.findOne({
             shiftId,
             pharmacistId: id,
             status: { $in: ["applied", "offered", "accepted"] }
         });
-        if (existingActive) return next(new ApiError(400, "Already applied"));
+        if (existingActive)
+            return next(new ApiError(400, "Already applied"));
 
-        // 🟡 Reuse withdrawn/rejected if exists
+        // 3️⃣ Reuse withdrawn/rejected if exists, otherwise create new
         let application = await Application.findOne({
             shiftId,
             pharmacistId: id,
@@ -123,73 +126,50 @@ const ApplyToShift = async (req, res, next) => {
             });
         }
 
-        // 🧩 Overlap check — exclude the same shift being applied for
-        const activeApplications = await Application.find({
-            pharmacistId: id,
-            status: { $in: ["applied", "offered", "accepted"] },
-            shiftId: { $ne: shiftId } // ✅ exclude this same shift
-        }).populate("shiftId");
-
-        let conflictingShiftIds = [];
-        for (const app of activeApplications) {
-            const existingShift = app.shiftId;
-            if (!existingShift) continue;
-
-            const overlaps =
-                ShiftFound.startTime < existingShift.endTime &&
-                ShiftFound.endTime > existingShift.startTime;
-
-            if (!overlaps) continue;
-
-            // ❗ Block only if both are Type B (auto-confirm)
-            if (
-                !ShiftFound.requiresPharmacistConfirmation &&
-                !existingShift.requiresPharmacistConfirmation
-            ) {
-                conflictingShiftIds.push(app._id);
-            }
-        }
-
-        if (conflictingShiftIds.length > 0) {
-            return res.status(409).json({
-                status: "conflict",
-                message: "Overlapping auto-confirm shift(s) found",
-                conflicts: conflictingShiftIds
-            });
-        }
-
-        // 🟢 Link application to shift
+        // 4️⃣ Link application to shift
         if (!ShiftFound.applications.includes(application._id)) {
             ShiftFound.applications.push(application._id);
             await ShiftFound.save();
         }
 
-        // 📨 Notify pharmacy via queue
+        // 5️⃣ Fire background conflict detection (async)
+        await conflictQueue.add("detectConflicts", {
+            pharmacistId: id,
+            shiftId,
+            action: "apply"
+        });
+
+        // 6️⃣ Queue pharmacy notification email
         const pharmacyFound = await Pharmacy.findById(ShiftFound.pharmacyId);
         const pharmacistFound = await Pharmacist.findById(id);
 
-        const jobBody = generateApplicationEmail({
-            pharmacyName: pharmacyFound.name,
-            pharmacistName: pharmacistFound.name,
-            licenseNumber: pharmacistFound.licenseNumber,
-            shiftDate: ShiftFound.date,
-            notes,
-            dashboardURL: ""
-        });
+        if (pharmacyFound && pharmacistFound) {
+            const jobBody = generateApplicationEmail({
+                pharmacyName: pharmacyFound.name,
+                pharmacistName: pharmacistFound.name,
+                licenseNumber: pharmacistFound.licenseNumber,
+                shiftDate: ShiftFound.date,
+                notes,
+                dashboardURL: ""
+            });
 
-        const job = {
-            to: pharmacyFound.email,
-            subject: "New Application received for SHIFT",
-            body: jobBody
-        };
-        await emailQueue.add("sendEmail", job);
+            await emailQueue.add("sendEmail", {
+                to: pharmacyFound.email,
+                subject: "New Application received for SHIFT",
+                body: jobBody
+            });
+        }
 
-        return res.json(new ApiResponse(200, application, "Application Sent to the Shift's Pharmacy"));
+        // 7️⃣ Final response to pharmacist
+        return res.json(
+            new ApiResponse(200, application, "Application sent successfully (conflicts handled asynchronously)")
+        );
 
     } catch (error) {
         next(error);
     }
 };
+
 const UnApplyShift = async (req, res, next) => {
     try {
         const { applicationId } = req.params;
@@ -387,7 +367,7 @@ const confirmOffer = async (req, res, next) => {
         const { applicationId } = req.params;
         const pharmacistId = req.user.id;
 
-        // 1️⃣ Find application and validate ownership
+        // 1️⃣ Find and validate
         const application = await Application.findById(applicationId).populate("shiftId");
         if (!application) throw new ApiError(404, "Application not found");
 
@@ -396,12 +376,10 @@ const confirmOffer = async (req, res, next) => {
 
         const shift = application.shiftId;
         if (!shift) throw new ApiError(404, "Associated shift not found");
-
-        // 2️⃣ Validate that it's currently 'offered'
         if (application.status !== "offered")
             throw new ApiError(400, "Only offered applications can be confirmed");
 
-        // 3️⃣ Update statuses
+        // 2️⃣ Mark accepted and fill shift
         application.status = "accepted";
         await application.save();
 
@@ -409,37 +387,18 @@ const confirmOffer = async (req, res, next) => {
         shift.confirmedPharmacistId = pharmacistId;
         await shift.save();
 
-        // 4️⃣ Reject all other applicants for this same shift
+        // 3️⃣ Reject other applicants for this same shift
         await Application.updateMany(
             { shiftId: shift._id, _id: { $ne: application._id } },
             { $set: { status: "rejected" } }
         );
 
-        // 5️⃣ Withdraw pharmacist's other overlapping applications
-        const activeApps = await Application.find({
+        // 4️⃣ Async conflict check
+        await conflictQueue.add("detectConflicts", {
             pharmacistId,
-            _id: { $ne: application._id },
-            status: { $in: ["applied", "offered", "accepted"] }
-        }).populate("shiftId");
-
-        const overlappingIds = [];
-        for (const app of activeApps) {
-            const otherShift = app.shiftId;
-            if (!otherShift) continue;
-
-            const overlaps =
-                shift.startTime < otherShift.endTime &&
-                shift.endTime > otherShift.startTime;
-
-            if (overlaps) overlappingIds.push(app._id);
-        }
-
-        if (overlappingIds.length > 0) {
-            await Application.updateMany(
-                { _id: { $in: overlappingIds } },
-                { $set: { status: "withdrawn" } }
-            );
-        }
+            shiftId: shift._id,
+            action: "confirm"
+        });
 
         return res
             .status(200)
@@ -448,7 +407,6 @@ const confirmOffer = async (req, res, next) => {
                 application,
                 "Offer confirmed successfully. Shift filled (Type A)."
             ));
-
     } catch (error) {
         next(error);
     }

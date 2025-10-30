@@ -5,6 +5,8 @@ import { generateToken, verifyToken } from "../utils/jwt.js"
 import { setTokeninCookie } from "../utils/cookie.js"
 import Application from "../models/Application.model.js"
 import Shift from "../models/Shift.model.js"
+import { conflictQueue } from "../queues/conflictQueue.js";
+
 
 const Login = async (req, res, next) => {
     try {
@@ -88,11 +90,8 @@ const AcceptApplication = async (req, res, next) => {
         if (shift.status === "filled")
             throw new ApiError(400, "This shift is already filled");
 
-
         if (!shift.requiresPharmacistConfirmation) {
-            // TYPE B — auto-confirm, no pharmacist confirmation step
-            // → immediately reject others & withdraw overlapping apps
-
+            // TYPE B — auto-confirm
             await Application.updateMany(
                 { shiftId: shift._id, _id: { $ne: applicationId } },
                 { $set: { status: "rejected" } }
@@ -102,33 +101,16 @@ const AcceptApplication = async (req, res, next) => {
             shift.confirmedPharmacistId = application.pharmacistId;
             await shift.save();
 
-            // Also withdraw overlapping (A or B) applications of the same pharmacist
-            const pharmacistId = application.pharmacistId;
-            const activeApps = await Application.find({
-                pharmacistId,
-                _id: { $ne: application._id },
-                status: { $in: ["applied", "offered", "accepted"] }
-            }).populate("shiftId");
-
-            const overlappingIds = [];
-            for (const app of activeApps) {
-                const otherShift = app.shiftId;
-                if (!otherShift) continue;
-
-                const overlaps =
-                    shift.startTime < otherShift.endTime &&
-                    shift.endTime > otherShift.startTime;
-
-                if (overlaps) overlappingIds.push(app._id);
-            }
-            if (overlappingIds.length > 0) {
-                await Application.updateMany(
-                    { _id: { $in: overlappingIds } },
-                    { $set: { status: "withdrawn" } }
-                );
-            }
+            // Mark this application as accepted
             application.status = "accepted";
             await application.save();
+
+            // ✅ Fire conflict worker asynchronously
+            await conflictQueue.add("detectConflicts", {
+                pharmacistId: application.pharmacistId,
+                shiftId: shift._id,
+                action: "accept"
+            });
 
             return res
                 .status(200)
@@ -137,14 +119,11 @@ const AcceptApplication = async (req, res, next) => {
                     application,
                     "Application accepted and pharmacist confirmed (Type B)"
                 ));
-
         } else {
-            // TYPE A — pharmacist must confirm manually
-            // → set application.status to 'offered' (not 'accepted' yet)
-            // → do NOT reject other applicants yet
+            // TYPE A — pharmacist must confirm
             application.status = "offered";
             await application.save();
-            // ✅ Response for Type A
+
             return res
                 .status(200)
                 .json(new ApiResponse(

@@ -1022,8 +1022,6 @@ Tested the default value of the new field `requiresPharmacistConfirmation` to co
 All subtasks (1.1–1.7) successfully completed and validated.  
 Next stage → **Step 2: Update ApplyToShift logic (handle overlap + smart blocking).**
 
-# 🧩 Pre–Day 10 Development Log
-
 ## Step 2 – Update ApplyToShift Logic (Handle Overlap + Smart Blocking)
 
 ---
@@ -1249,3 +1247,88 @@ This concludes all **Pre-Day 10 implementation**; the system is now stable and r
 > Automates overlap checks and asynchronous withdrawals.
 
 ---
+
+# 🧩 Day 10 – Async Conflict Detection with Redis & BullMQ
+
+---
+
+### 🎯 Goal
+
+The objective of **Day 10** was to **offload heavy conflict detection logic** from controllers into **asynchronous background workers** powered by **Redis + BullMQ**, making shift applications faster and more scalable.
+
+---
+
+### 🧠 Core Idea
+
+Previously, overlap and conflict detection were handled directly inside controllers like `ApplyToShift`, which caused:
+
+- Increased latency during pharmacist actions.
+- High database load.
+- Poor scalability as the number of applications grew.
+
+The solution was to **decouple conflict detection** from request–response flow and handle it **asynchronously** via Redis queues.
+
+---
+
+### ⚙️ Implementation Steps
+
+#### 1. **Setup Conflict Queue**
+
+- Created `conflictQueue.js` using BullMQ’s `Queue` class.
+- Configured it to use a shared `redisConnection`.
+
+#### 2. **Create Conflict Worker**
+
+- Added `conflictWorker.js` which runs continuously in the background.
+- Subscribed to the `conflictQueue` and executes conflict detection logic through the `detectConflicts` utility.
+
+#### 3. **Utility: detectConflicts.js**
+
+- Centralized conflict resolution logic for all cases:
+  - Pharmacist **applies** for a shift (`action: "apply"`).
+  - Pharmacy **accepts** an application (`action: "accept"`).
+  - Pharmacist **confirms** an offer (`action: "confirm"`).
+- Handles overlap between Type A (confirmation) and Type B (auto-confirm) shifts.
+- Automatically withdraws or rejects conflicting applications when necessary.
+
+#### 4. **Controller Refactoring**
+
+- Updated these controllers to enqueue conflict jobs instead of handling them inline:
+  - `ApplyToShift` (pharmacist side)
+  - `AcceptApplication` (pharmacy side)
+  - `confirmOffer` (pharmacist confirmation step)
+- Each controller now immediately responds to the user, while the worker resolves conflicts in background.
+
+#### 5. **Maintained Email Queue Integration**
+
+- Continued using existing `emailQueue` + `emailWorker` for notifications.
+- Both queues now run independently and asynchronously, improving system responsiveness.
+
+---
+
+### 🚀 Outcome
+
+- Controllers became **lightweight and instant** in response time.
+- Heavy overlap detection moved to **background jobs**, ensuring scalability.
+- Pharmacists and pharmacies now experience **faster application handling**.
+- System maintains **eventual consistency** — conflicts are automatically resolved shortly after applying or accepting.
+
+---
+
+### ✅ Day 10 Deliverables Summary
+
+| Component                                                                | Purpose                                   | Status |
+| ------------------------------------------------------------------------ | ----------------------------------------- | ------ |
+| `conflictQueue.js`                                                       | Queue definition for conflict jobs        | ✅     |
+| `conflictWorker.js`                                                      | Worker that runs conflict detection       | ✅     |
+| `detectConflicts.js`                                                     | Core logic to detect and resolve overlaps | ✅     |
+| Controller updates (`ApplyToShift`, `AcceptApplication`, `confirmOffer`) | Integrated queue jobs                     | ✅     |
+| Redis Connection (`redisConnection.js`)                                  | Shared for all queues                     | ✅     |
+
+---
+
+### 🏁 Final Result
+
+With this, the backend’s **core asynchronous infrastructure** is complete.  
+The platform can now handle multiple pharmacists and pharmacies in parallel  
+without slowing down — a key step toward production readiness.
