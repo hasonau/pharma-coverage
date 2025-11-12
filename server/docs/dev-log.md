@@ -1332,3 +1332,139 @@ The solution was to **decouple conflict detection** from request–response flow
 With this, the backend’s **core asynchronous infrastructure** is complete.  
 The platform can now handle multiple pharmacists and pharmacies in parallel  
 without slowing down — a key step toward production readiness.
+
+# 🧩 Day 11 – Real-Time Communication (Socket.IO)
+
+## 🎯 Goal
+
+Enable secure, real-time updates between **pharmacy** and **pharmacist** users without page refreshes.
+
+---
+
+## ✅ Work Completed So Far
+
+### Phase 1 – Learning & Concept
+
+- Understood **WebSockets vs HTTP**:  
+  WebSocket keeps one persistent, two-way connection instead of repeated request-response cycles.
+- Learned **Socket.IO** fundamentals:
+  - `io.on("connection")` handles new connections.
+  - `socket.emit` sends messages.
+  - `socket.on` listens for messages.
+  - **Rooms** organize users into private channels.
+- Planned project-specific real-time cases:
+  - New application received
+  - Application accepted / rejected
+  - Offer confirmed
+  - Application withdrawn
+
+---
+
+### Phase 2 – Hello-World Setup
+
+- Installed **Socket.IO** on backend.
+- Created a separate `socketServer` module for cleaner structure.
+- Linked it with `server.js` so backend can accept WebSocket connections.
+- Verified live connection and disconnection logs.
+
+---
+
+### Phase 3 – Authentication & Rooms
+
+- Added **JWT verification** at handshake level → only authenticated users can connect.
+- Each connected user automatically joins a room named by their `role_id` (e.g., `pharmacist_45`, `pharmacy_12`).
+- This enables targeted real-time events instead of broadcasting to everyone.
+- Verified successful authentication and room-join logs.
+
+---
+
+## 💡 Conceptual Note
+
+- **Socket.IO notifications vs Email Queue:**
+  - Redis + BullMQ email worker continues to handle **asynchronous email notifications** (for users who prefer email or are offline).
+  - Socket.IO handles **instant in-app notifications** when the user is online.
+  - Both can coexist.
+
+> ⚠️ **Implementation Note:**  
+> Add a **boolean preference flag** in user settings (e.g., `emailNotifications: true | false`).  
+> The email queue should check this flag before sending emails, while Socket.IO should always deliver in-app notifications when the user is connected.
+
+---
+
+## 📊 Current Status
+
+- Socket.IO server operational
+- Authentication integrated
+- Role-based rooms implemented
+- Ready to implement **Phase 4 – Real-Time Event Emissions**
+
+---
+
+## ⏭️ Next Up
+
+- Wire real-time events into controllers (e.g., `newApplication`, `applicationStatusUpdated`, `offerConfirmed`, `applicationWithdrawn`)
+- Test local event emissions between pharmacy ↔ pharmacist clients
+
+### Phase 4 – Real-Time Events Integration
+
+**Goal:** Connect your existing controllers to emit real-time updates via Socket.IO.
+
+**Key Events & Triggers**
+
+- **newApplication**: Triggered when a pharmacist applies for a shift. Emitted to the corresponding pharmacy room. Notifies pharmacy immediately about a new applicant.
+- **applicationStatusUpdated**: Triggered when a pharmacy accepts or rejects an application. Emitted to the pharmacist room. Provides instant feedback on application status.
+- **offerConfirmed**: Triggered when a pharmacist confirms a Type A offer. Emitted to the corresponding pharmacy room. Confirms shift acceptance and updates related applications.
+- **applicationWithdrawn**: Triggered when a pharmacist withdraws an application. Emitted to the pharmacy room. Updates pharmacy dashboard to reflect withdrawn applications.
+
+**Implementation Notes**
+
+- Events should fire **after the main database operations** in each controller.
+- Event payloads include relevant information for the frontend to update dashboards, such as shift ID, pharmacist ID, status, and a message.
+- Socket.IO notifications work **alongside the existing email queue**; in-app notifications are instant, while emails handle offline users.
+- Ensure **role-based room emission** so only authorized users receive updates.
+
+✅ Outcome: All critical state changes now trigger real-time events to the correct users.
+
+---
+
+### Phase 5 – Frontend Testing (Minimal)
+
+**Goal:** Verify that frontend clients receive and handle Socket.IO events correctly.
+
+**Steps**
+
+- Connect the frontend client to the backend Socket.IO server.
+- Listen for all relevant events (new application, status updates, offer confirmation, application withdrawal).
+- Open multiple browser tabs simulating pharmacy and pharmacist dashboards.
+- Perform actions such as applying, accepting, or withdrawing applications to verify that updates appear instantly on the relevant dashboards.
+
+✅ Outcome: Both pharmacy and pharmacist dashboards respond live to updates, confirming correct event emission and reception.
+
+---
+
+### Phase 6 – Polishing and Deployment Preparation
+
+**Goal:** Ensure that Socket.IO integration is stable, maintainable, and ready for production.
+
+**Tasks**
+
+- Handle user disconnects properly to clean up socket mappings and avoid stale connections.
+- Test multiple concurrent users to confirm events reach the correct rooms.
+- Organize the socket server code into dedicated modules for clarity and maintainability.
+- Add meaningful logs and documentation describing each event, its trigger, and its target.
+- Review the system to ensure Socket.IO events integrate seamlessly with background email notifications and async conflict checks.
+
+✅ Outcome: Socket.IO is stable, secure, and fully integrated, enabling real-time updates for all critical pharmacist and pharmacy interactions.
+
+---
+
+### Learning Notes & References
+
+- Socket.IO works **together with email queues**; in-app notifications are instant, while emails cover offline scenarios.
+- Always emit events to **role-based rooms** to prevent leaking sensitive data.
+- Keep event payloads minimal but sufficient for frontend updates.
+- Recommended references for further reading:
+  1. WebSockets vs HTTP (Fireship YouTube, 5 min)
+  2. Socket.IO Crash Course (Traversy Media YouTube, 30 min)
+  3. Official Socket.IO documentation
+  4. JWT authentication with Socket.IO for secure connections

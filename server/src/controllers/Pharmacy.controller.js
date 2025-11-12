@@ -124,6 +124,17 @@ const AcceptApplication = async (req, res, next) => {
             application.status = "offered";
             await application.save();
 
+            const io = getIO();
+            io.to(`pharmacist_${application.pharmacistId}`).emit("applicationStatusUpdated", {
+                shiftId: shift._id,
+                pharmacistId: application.pharmacistId,
+                status: application.status, // "accepted" or "offered"
+                message: application.status === "accepted"
+                    ? "Your application was accepted"
+                    : "Your application is offered for confirmation"
+            });
+
+
             return res
                 .status(200)
                 .json(new ApiResponse(
@@ -132,6 +143,7 @@ const AcceptApplication = async (req, res, next) => {
                     "Application offered to pharmacist for confirmation (Type A)"
                 ));
         }
+
 
     } catch (error) {
         next(error);
@@ -161,6 +173,15 @@ const RejectApplication = async (req, res, next) => {
         // Mark this application as rejected
         application.status = "rejected";
         await application.save();
+
+        const io = getIO();
+        io.to(`pharmacist_${application.pharmacistId}`).emit("applicationStatusUpdated", {
+            shiftId: application.shiftId._id,
+            pharmacistId: application.pharmacistId,
+            status: "rejected",
+            message: "Your application was rejected"
+        });
+
 
         res.json(new ApiResponse(200, application, "Application rejected successfully"));
     } catch (error) {

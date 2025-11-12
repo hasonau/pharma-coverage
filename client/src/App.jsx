@@ -1,4 +1,5 @@
 // import { Button } from "@/components/ui/button"
+import "./test/socketTest.js";
 
 function App() {
   return (

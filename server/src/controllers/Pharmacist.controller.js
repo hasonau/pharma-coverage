@@ -9,6 +9,7 @@ import { setTokeninCookie } from "../utils/cookie.js";
 import { emailQueue } from "../queues/emailQueue.js";
 import { conflictQueue } from "../queues/conflictQueue.js";
 import { generateApplicationEmail } from "../utils/generateApplicationEmail.js";
+import { getIO } from '../socket/socketServer.js'
 
 const RegisterPharmacist = async (req, res, next) => {
     try {
@@ -159,7 +160,18 @@ const ApplyToShift = async (req, res, next) => {
                 body: jobBody
             });
         }
-
+        const io = getIO();
+        io.to(`pharmacy_${ShiftFound.pharmacyId}`).emit("newApplication", {
+            pharmacistId: pharmacistFound._id,
+            shiftId: ShiftFound._id,
+            message: "New pharmacist applied for your shift."
+        });
+        // TEMP: Emit to pharmacist for testing
+        io.to(`pharmacist_${id}`).emit("newApplication", {
+            pharmacistId: pharmacistFound._id,
+            shiftId: ShiftFound._id,
+            message: "New pharmacist applied for your shift. (Test)"
+        });
         // 7️⃣ Final response to pharmacist
         return res.json(
             new ApiResponse(200, application, "Application sent successfully (conflicts handled asynchronously)")
@@ -232,6 +244,13 @@ const UnApplyShift = async (req, res, next) => {
             };
             await emailQueue.add("sendEmail", job);
         }
+        const io = getIO();
+        io.to(`pharmacy_${shift.pharmacyId}`).emit("applicationWithdrawn", {
+            shiftId: shift._id,
+            pharmacistId,
+            message: "Pharmacist withdrew their application."
+        });
+
 
         res.json(new ApiResponse(200, application, "Application withdrawn successfully"));
 
@@ -335,6 +354,20 @@ const switchShiftApplication = async (req, res, next) => {
                 body: jobBody
             });
         }
+        const io = getIO();
+        // Old shift
+        io.to(`pharmacy_${oldShift.pharmacyId}`).emit("applicationWithdrawn", {
+            shiftId: oldShift._id,
+            pharmacistId,
+            message: "Pharmacist switched from this shift."
+        });
+        // New shift
+        io.to(`pharmacy_${newShift.pharmacyId}`).emit("newApplication", {
+            shiftId: newShift._id,
+            pharmacistId,
+            message: "Pharmacist applied for this new shift."
+        });
+
 
         res.status(200).json(new ApiResponse(
             200,
@@ -400,6 +433,13 @@ const confirmOffer = async (req, res, next) => {
             action: "confirm"
         });
 
+        const io = getIO();
+        io.to(`pharmacy_${shift.pharmacyId}`).emit("offerConfirmed", {
+            shiftId: shift._id,
+            pharmacistId,
+            message: "Pharmacist confirmed the offer."
+        });
+
         return res
             .status(200)
             .json(new ApiResponse(
@@ -428,6 +468,14 @@ const rejectOffer = async (req, res, next) => {
         // 1️⃣ Mark this application as rejected
         application.status = "rejected";
         await application.save();
+
+        const io = getIO();
+        io.to(`pharmacy_${shift.pharmacyId}`).emit("applicationStatusUpdated", {
+            shiftId: shift._id,
+            pharmacistId,
+            status: "offerRejected",
+            message: "Pharmacist rejected the offer."
+        });
 
         // 2️⃣ Keep shift open and other applicants untouched
         return res

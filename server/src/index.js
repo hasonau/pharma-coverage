@@ -1,6 +1,8 @@
 // require('dotenv').config({path: './env'})
 import dotenv from "dotenv"
 import connectDB from "./db/index.js";
+import http from "http";
+import { initSocketServer } from "./socket/socketServer.js";
 import { app } from './app.js'
 dotenv.config({
     path: './.env'
@@ -11,7 +13,14 @@ dotenv.config({
 connectDB()
     .then(() => {
         const PORT = process.env.PORT || 8000;
-        app.listen(PORT, () => {
+
+        // create HTTP server using Express app
+        const server = http.createServer(app);
+        // initialize socket.io on that server
+        initSocketServer(server);
+
+        // start listening
+        server.listen(PORT, () => {
             console.log(`⚙️ Server is running at port : ${PORT}`);
         });
     })
